@@ -25,8 +25,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port string `yaml:"port"`
+	Host      string `yaml:"host"`
+	Port      string `yaml:"port"`
+	DebugMode bool   `yaml:"debugMode"`
 }
 
 type TelegramAuthConfig struct {

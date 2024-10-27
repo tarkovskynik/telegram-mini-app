@@ -22,7 +22,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	fmt.Println("config main: ", cfg)
 
 	err = logger.Initialize(cfg.LogLevel)
 	if err != nil {
@@ -38,11 +37,13 @@ func main() {
 	defer repo.Close()
 
 	userService := service.NewUserService(repo)
-	fmt.Println("token main: ", cfg.TelegramAuth.TelegramBotToken)
 	telegramAuth := auth.NewTelegramAuth(cfg.TelegramAuth.TelegramBotToken)
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	if cfg.Server.DebugMode {
+		router.Use(gin.Logger())
+	}
 
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true

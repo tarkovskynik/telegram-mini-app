@@ -2,7 +2,6 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -46,8 +45,6 @@ func (t *TelegramAuth) TelegramAuthMiddleware() gin.HandlerFunc {
 		}
 
 		initData := strings.TrimPrefix(authHeader, "Telegram ")
-		fmt.Println(initData)
-		fmt.Println(t.botToken)
 		if err := initdata.Validate(initData, t.botToken, expTime); err != nil {
 			log.Info("invalid telegram init data", zap.Error(err))
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram auth data"})
