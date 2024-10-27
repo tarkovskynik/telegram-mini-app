@@ -34,6 +34,7 @@ func main() {
 	defer repo.Close()
 
 	userService := service.NewUserService(repo)
+	dailyQuestService := service.NewDailyQuestService(repo)
 	telegramAuth := auth.NewTelegramAuth(cfg.TelegramAuth.TelegramBotToken)
 
 	router := gin.New()
@@ -60,6 +61,7 @@ func main() {
 
 	a := router.Group("/api/v1")
 	api.NewUserRoutes(a, userService, telegramAuth)
+	api.NewDailyQuestRoutes(a, dailyQuestService, telegramAuth)
 
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	zapLogger.Info("Starting server", zap.String("addr", addr))
