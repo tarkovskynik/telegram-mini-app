@@ -82,11 +82,11 @@ func (r *dailyQuestRoutes) GetDailyQuestStatus(c *gin.Context) {
 		DailyRewards:           rewards,
 	}
 
-	if !status.LastClaimedAt.IsZero() {
-		response.LastClaimedAt = &status.LastClaimedAt
+	if !(status.LastClaimedAt == nil) {
+		response.LastClaimedAt = status.LastClaimedAt
 	}
-	if !status.NextClaimAvailable.IsZero() {
-		response.NextClaimAvailable = &status.NextClaimAvailable
+	if !(status.NextClaimAvailable == nil) {
+		response.NextClaimAvailable = status.NextClaimAvailable
 	}
 
 	c.JSON(http.StatusOK, response)

@@ -12,9 +12,9 @@ import (
 )
 
 type DailyQuest struct {
-	UserTelegramID         int64     `db:"user_telegram_id"`
-	LastClaimedAt          time.Time `db:"last_claimed_at"`
-	ConsecutiveDaysClaimed int       `db:"consecutive_days_claimed"`
+	UserTelegramID         int64      `db:"user_telegram_id"`
+	LastClaimedAt          *time.Time `db:"last_claimed_at"`
+	ConsecutiveDaysClaimed int        `db:"consecutive_days_claimed"`
 }
 
 func (r *Repository) GetDailyQuestStatus(ctx context.Context, telegramID int64) (*model.DailyQuest, error) {

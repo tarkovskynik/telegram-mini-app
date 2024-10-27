@@ -35,7 +35,7 @@ func (s *DailyQuestService) GetStatus(ctx context.Context, telegramID int64) (*m
 	}
 
 	now := time.Now()
-	hasNeverBeenClaimed := quest.LastClaimedAt.IsZero()
+	hasNeverBeenClaimed := quest.LastClaimedAt == nil
 
 	status := &model.DailyQuest{
 		UserTelegramID:         telegramID,
@@ -46,13 +46,13 @@ func (s *DailyQuestService) GetStatus(ctx context.Context, telegramID int64) (*m
 	}
 
 	if hasNeverBeenClaimed {
-		status.NextClaimAvailable = time.Time{}
+		status.NextClaimAvailable = nil
 		status.IsAvailable = true
 		status.ConsecutiveDaysClaimed = 0
 	} else {
 		nextClaimAvailable := quest.LastClaimedAt.Add(24 * time.Hour)
-		status.NextClaimAvailable = nextClaimAvailable
-		status.IsAvailable = now.After(status.NextClaimAvailable)
+		status.NextClaimAvailable = &nextClaimAvailable
+		status.IsAvailable = now.After(*status.NextClaimAvailable)
 
 		if now.After(nextClaimAvailable.Add(24 * time.Hour)) {
 			status.ConsecutiveDaysClaimed = 0
@@ -98,7 +98,7 @@ func (s *DailyQuestService) Claim(ctx context.Context, telegramID int64) error {
 
 	err = s.repo.UpdateDailyQuestStatus(ctx, &model.DailyQuest{
 		UserTelegramID:         telegramID,
-		LastClaimedAt:          now,
+		LastClaimedAt:          &now,
 		ConsecutiveDaysClaimed: newConsecutiveDays,
 	})
 	if err != nil {

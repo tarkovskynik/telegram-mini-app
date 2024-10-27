@@ -4,8 +4,8 @@ import "time"
 
 type DailyQuest struct {
 	UserTelegramID         int64
-	LastClaimedAt          time.Time
-	NextClaimAvailable     time.Time
+	LastClaimedAt          *time.Time
+	NextClaimAvailable     *time.Time
 	IsAvailable            bool
 	HasNeverBeenClaimed    bool
 	ConsecutiveDaysClaimed int
