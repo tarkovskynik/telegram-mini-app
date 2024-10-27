@@ -47,7 +47,7 @@ CREATE TABLE quest_validations (
 );
 
 CREATE TABLE daily_quests (
-                              user_telegram_id INTEGER PRIMARY KEY REFERENCES users(telegram_id),
+                              user_telegram_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
                               last_claimed_at TIMESTAMP,
                               consecutive_days_claimed INTEGER DEFAULT 0
 );
