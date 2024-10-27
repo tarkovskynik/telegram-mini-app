@@ -29,22 +29,6 @@ go.work
 .env.test
 .env.production
 
-# Build output
-/build/
-/tmp/
-
-# Log files
-*.log
-/log/
-/logs/
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-*.dump
-*.sql
-
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -54,33 +38,11 @@ go.work
 ehthumbs.db
 Thumbs.db
 
-# Docker volumes
-docker/data/
-docker/postgres/
-
-# Binary files
-/cmd/app/app
-/cmd/app/debug
-
-# Test coverage files
-coverage.out
-coverage.html
-
 # Config files that might contain sensitive data
 config.yaml
 !example.config.yaml
 
-# Project specific
-generated/
-/migrations/*.sql
-!/migrations/schema.sql
-
-# Debug files
-debug/
-__debug_bin
-
 # Temporary files
 *.tmp
 *.bak
-*.swp
 *~.nib
