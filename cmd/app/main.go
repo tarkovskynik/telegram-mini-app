@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
-	"time"
 
 	"UD_telegram_miniapp/internal/api"
 	"UD_telegram_miniapp/internal/repository"
@@ -13,7 +11,6 @@ import (
 	"UD_telegram_miniapp/pkg/logger"
 	"go.uber.org/zap"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -45,21 +42,21 @@ func main() {
 		router.Use(gin.Logger())
 	}
 
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
-	config.AllowMethods = []string{
-		http.MethodHead,
-		http.MethodGet,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodPatch,
-		http.MethodDelete,
-	}
-	config.AllowHeaders = []string{"*"}
-	config.AllowCredentials = true
-	config.MaxAge = 12 * time.Hour
-
-	router.Use(cors.New(config))
+	//config := cors.DefaultConfig()
+	//config.AllowAllOrigins = true
+	//config.AllowMethods = []string{
+	//	http.MethodHead,
+	//	http.MethodGet,
+	//	http.MethodPost,
+	//	http.MethodPut,
+	//	http.MethodPatch,
+	//	http.MethodDelete,
+	//}
+	//config.AllowHeaders = []string{"*"}
+	//config.AllowCredentials = true
+	//config.MaxAge = 12 * time.Hour
+	//
+	//router.Use(cors.New(config))
 
 	a := router.Group("/api/v1")
 	api.NewUserRoutes(a, userService, telegramAuth)
