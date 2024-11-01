@@ -30,7 +30,7 @@ CREATE TABLE users_social_quests (
                                      user_telegram_id BIGINT REFERENCES users(telegram_id),
                                      social_quest_id UUID REFERENCES social_quests(quest_id),
                                      completed BOOLEAN DEFAULT FALSE,
-                                     started_at TIMESTAMP,
+                                     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                      finished_at TIMESTAMP,
                                      PRIMARY KEY (user_telegram_id, social_quest_id)
 );
@@ -38,6 +38,13 @@ CREATE TABLE users_social_quests (
 CREATE TABLE social_quest_validation_kinds (
                                                validation_id SERIAL PRIMARY KEY,
                                                validation_name VARCHAR(255) UNIQUE
+);
+
+CREATE TABLE user_validations (
+                                  user_telegram_id BIGINT REFERENCES users(telegram_id),
+                                  validation_id INTEGER REFERENCES social_quest_validation_kinds(validation_id),
+                                  achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  PRIMARY KEY (user_telegram_id, validation_id)
 );
 
 CREATE TABLE quest_validations (
@@ -57,9 +64,9 @@ CREATE TABLE daily_quests (
 -- +goose StatementBegin
 DROP TABLE IF EXISTS daily_quests;
 DROP TABLE IF EXISTS quest_validations;
+DROP TABLE IF EXISTS user_validations;
 DROP TABLE IF EXISTS social_quest_validation_kinds;
 DROP TABLE IF EXISTS users_social_quests;
 DROP TABLE IF EXISTS social_quests;
 DROP TABLE IF EXISTS users;
-DROP EXTENSION IF EXISTS "uuid-ossp";
 -- +goose StatementEnd

@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
 	"UD_telegram_miniapp/internal/model"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -45,12 +47,12 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 			PlaceholderFormat(squirrel.Dollar).
 			ToSql()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to build user insert query: %w", err)
 		}
 
 		_, err = tx.Exec(query, args...)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to insert user: %w", err)
 		}
 
 		if user.ReferrerID != nil {
@@ -61,12 +63,12 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 				PlaceholderFormat(squirrel.Dollar).
 				ToSql()
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to build referrer update query: %w", err)
 			}
 
 			_, err = tx.Exec(updateQuery, updateArgs...)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to update referrer: %w", err)
 			}
 		}
 
@@ -79,12 +81,47 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 			PlaceholderFormat(squirrel.Dollar).
 			ToSql()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to build daily quest insert query: %w", err)
 		}
 
 		_, err = tx.Exec(questQuery, questArgs...)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to insert daily quest: %w", err)
+		}
+
+		socialQuestsQuery, socialQuestsArgs, err := squirrel.
+			Select("quest_id").
+			From("social_quests").
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build social quests select query: %w", err)
+		}
+
+		var questIDs []uuid.UUID
+		err = tx.Select(&questIDs, socialQuestsQuery, socialQuestsArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to get social quests: %w", err)
+		}
+
+		if len(questIDs) > 0 {
+			builder := squirrel.
+				Insert("users_social_quests").
+				Columns("user_telegram_id", "social_quest_id", "completed")
+
+			for _, questID := range questIDs {
+				builder = builder.Values(user.TelegramID, questID, false)
+			}
+
+			query, args, err := builder.PlaceholderFormat(squirrel.Dollar).ToSql()
+			if err != nil {
+				return fmt.Errorf("failed to build social quests insert query: %w", err)
+			}
+
+			_, err = tx.Exec(query, args...)
+			if err != nil {
+				return fmt.Errorf("failed to insert user social quests: %w", err)
+			}
 		}
 
 		return nil

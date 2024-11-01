@@ -18,12 +18,14 @@ import (
 const expTime = 24 * time.Hour
 
 type TelegramAuth struct {
-	botToken string
+	botToken  string
+	debugMode bool
 }
 
-func NewTelegramAuth(botToken string) *TelegramAuth {
+func NewTelegramAuth(botToken string, debugMode bool) *TelegramAuth {
 	return &TelegramAuth{
-		botToken: botToken,
+		botToken:  botToken,
+		debugMode: debugMode,
 	}
 }
 
@@ -45,10 +47,12 @@ func (t *TelegramAuth) TelegramAuthMiddleware() gin.HandlerFunc {
 		}
 
 		initData := strings.TrimPrefix(authHeader, "Telegram ")
-		if err := initdata.Validate(initData, t.botToken, expTime); err != nil {
-			log.Info("invalid telegram init data", zap.Error(err))
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram auth data"})
-			return
+		if !t.debugMode {
+			if err := initdata.Validate(initData, t.botToken, expTime); err != nil {
+				log.Info("invalid telegram init data", zap.Error(err))
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram auth data"})
+				return
+			}
 		}
 
 		telegramUserData, err := ExtractTelegramData(initData)

@@ -12,7 +12,13 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
+	ErrNotFound            = errors.New("not found")
+	ErrQuestNotStarted     = errors.New("quest not started")
+	ErrQuestAlreadyClaimed = errors.New("quest already claimed")
+
+	ErrQuestNotFound           = errors.New("quest not found")
+	ErrValidationNotFound      = errors.New("validation not found")
+	ErrValidationAlreadyExists = errors.New("validation already exists for quest")
 )
 
 type Repository struct {

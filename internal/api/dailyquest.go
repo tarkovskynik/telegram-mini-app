@@ -119,5 +119,5 @@ func (r *dailyQuestRoutes) ClaimDailyQuest(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{})
+	r.GetDailyQuestStatus(c)
 }
