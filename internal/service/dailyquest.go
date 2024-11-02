@@ -34,7 +34,7 @@ func (s *DailyQuestService) GetStatus(ctx context.Context, telegramID int64) (*m
 		return nil, err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	hasNeverBeenClaimed := quest.LastClaimedAt == nil
 
 	status := &model.DailyQuest{

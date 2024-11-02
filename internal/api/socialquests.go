@@ -234,7 +234,7 @@ type CreateSocialQuestRequest struct {
 	Title         string `json:"title" binding:"required"`
 	Description   string `json:"description"`
 	PointReward   int    `json:"point_reward" binding:"required,min=1"`
-	ValidationIDs []int  `json:"validation_ids"`
+	ValidationIDs []int  `json:"validation_id_list"`
 }
 
 func (h *socialQuestRoutes) CreateSocialQuest(c *gin.Context) {
@@ -258,6 +258,7 @@ func (h *socialQuestRoutes) CreateSocialQuest(c *gin.Context) {
 		PointReward: req.PointReward,
 		Validations: validations,
 	}
+	fmt.Println(quest.Validations)
 
 	questID, err := h.qs.CreateSocialQuest(c.Request.Context(), quest)
 	if err != nil {

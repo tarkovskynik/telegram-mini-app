@@ -64,7 +64,12 @@ func (s *SocialQuestService) GetQuestByID(ctx context.Context, telegramID int64,
 }
 
 func (s *SocialQuestService) ClaimQuest(ctx context.Context, telegramID int64, questID uuid.UUID) error {
-	err := s.repo.ClaimQuest(ctx, telegramID, questID)
+	sq, _, _, err := s.GetQuestByID(ctx, telegramID, questID)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.ClaimQuest(ctx, telegramID, questID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrNotFound):
@@ -76,6 +81,11 @@ func (s *SocialQuestService) ClaimQuest(ctx context.Context, telegramID int64, q
 		default:
 			return fmt.Errorf("failed to claim quest: %w", err)
 		}
+	}
+
+	err = s.repo.UpdateUserPoints(ctx, telegramID, sq.PointReward)
+	if err != nil {
+		return fmt.Errorf("failed to update user points: %w", err)
 	}
 
 	return nil

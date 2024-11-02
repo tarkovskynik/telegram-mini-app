@@ -282,7 +282,7 @@ func (r *Repository) GetUserWaitlistStatus(ctx context.Context, telegramID int64
 }
 
 func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User, error) {
-	var users []*model.User
+	var users []User
 
 	err := r.Transaction(ctx, func(tx *sqlx.Tx) error {
 		query, args, err := squirrel.
@@ -307,5 +307,15 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 		return nil, err
 	}
 
-	return users, nil
+	userList := make([]*model.User, len(users))
+	for i, user := range users {
+		userList[i] = &model.User{
+			Username:     user.Username,
+			Points:       user.Points,
+			ProfileImage: user.ProfileImage,
+			Referrals:    user.Referrals,
+		}
+	}
+
+	return userList, nil
 }

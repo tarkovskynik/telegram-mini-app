@@ -93,4 +93,5 @@ type SocialQuestRepository interface {
 	ListValidationKinds(ctx context.Context) ([]*model.QuestValidationKind, error)
 	RemoveQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
 	AddQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
+	UpdateUserPoints(ctx context.Context, telegramID int64, points int) error
 }
