@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,14 +47,18 @@ func NewSocialQuestRoutes(handler *gin.RouterGroup, qs *service.SocialQuestServi
 
 type questResponse struct {
 	QuestID     string `json:"quest_id"`
+	QuestType   string `json:"quest_type"`
+	ActionType  string `json:"action_type"`
 	Image       string `json:"img"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	PointReward int    `json:"point_reward"`
+	Link        string `json:"link"`
+	ChatID      int64  `json:"chat_id"`
 
-	Completed bool `json:"completed"`
-	//StartedAt  *int64 `json:"started_at"`
-	//FinishedAt *int64 `json:"finished_at"`
+	Completed  bool   `json:"completed"`
+	StartedAt  *int64 `json:"started_at"`
+	FinishedAt *int64 `json:"finished_at"`
 
 	ValidationsRequired []QuestValidation `json:"validations_required"`
 	ValidationsComplete []QuestValidation `json:"validations_complete"`
@@ -75,10 +78,6 @@ func (h *socialQuestRoutes) GetUserQuests(c *gin.Context) {
 	}
 
 	quests, userQuests, validationStatus, err := h.qs.GetUserQuests(c.Request.Context(), id)
-	for _, q := range quests {
-		fmt.Println(q.Validations)
-	}
-	fmt.Println("validationStatus:", validationStatus)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "telegram_id not found"})
@@ -115,15 +114,29 @@ func (h *socialQuestRoutes) GetUserQuests(c *gin.Context) {
 			}
 		}
 
+		var started, finished *int64
+		if userQuest.StartedAt != nil {
+			unix := userQuest.StartedAt.Unix()
+			started = &unix
+		}
+		if userQuest.FinishedAt != nil {
+			unix := userQuest.FinishedAt.Unix()
+			finished = &unix
+		}
+
 		response[i] = questResponse{
-			QuestID:     quest.QuestID.String(),
-			Image:       quest.Image,
-			Title:       quest.Title,
-			Description: quest.Description,
-			PointReward: quest.PointReward,
-			Completed:   userQuest.Completed,
-			//StartedAt:           userQuest.StartedAt,
-			//FinishedAt:          userQuest.FinishedAt,
+			QuestID:             quest.QuestID.String(),
+			QuestType:           quest.QuestType.Name,
+			ActionType:          quest.ActionType.Name,
+			Image:               quest.Image,
+			Title:               quest.Title,
+			Description:         quest.Description,
+			PointReward:         quest.PointReward,
+			Completed:           userQuest.Completed,
+			StartedAt:           started,
+			FinishedAt:          finished,
+			Link:                quest.Link,
+			ChatID:              quest.ChatID,
 			ValidationsRequired: validationsRequired,
 			ValidationsComplete: completedValidations,
 		}
@@ -179,15 +192,29 @@ func (h *socialQuestRoutes) GetQuestByID(c *gin.Context) {
 		}
 	}
 
+	var started, finished *int64
+	if userQuest.StartedAt != nil {
+		unix := userQuest.StartedAt.Unix()
+		started = &unix
+	}
+	if userQuest.FinishedAt != nil {
+		unix := userQuest.FinishedAt.Unix()
+		finished = &unix
+	}
+
 	response := questResponse{
-		QuestID:     quest.QuestID.String(),
-		Image:       quest.Image,
-		Title:       quest.Title,
-		Description: quest.Description,
-		PointReward: quest.PointReward,
-		Completed:   userQuest.Completed,
-		//StartedAt:           userQuest.StartedAt,
-		//FinishedAt:          userQuest.FinishedAt,
+		QuestID:             quest.QuestID.String(),
+		QuestType:           quest.QuestType.Name,
+		ActionType:          quest.ActionType.Name,
+		Image:               quest.Image,
+		Title:               quest.Title,
+		Description:         quest.Description,
+		PointReward:         quest.PointReward,
+		Completed:           userQuest.Completed,
+		StartedAt:           started,
+		FinishedAt:          finished,
+		Link:                quest.Link,
+		ChatID:              quest.ChatID,
 		ValidationsRequired: validationsRequired,
 		ValidationsComplete: completedValidations,
 	}
@@ -235,6 +262,10 @@ type CreateSocialQuestRequest struct {
 	Description   string `json:"description"`
 	PointReward   int    `json:"point_reward" binding:"required,min=1"`
 	ValidationIDs []int  `json:"validation_id_list"`
+	QuestTypeID   int    `json:"quest_type_id" binding:"required"`
+	ActionTypeID  int    `json:"action_type_id" binding:"required"`
+	Link          string `json:"link"`
+	ChatID        int64  `json:"chat_id"`
 }
 
 func (h *socialQuestRoutes) CreateSocialQuest(c *gin.Context) {
@@ -257,8 +288,15 @@ func (h *socialQuestRoutes) CreateSocialQuest(c *gin.Context) {
 		Description: req.Description,
 		PointReward: req.PointReward,
 		Validations: validations,
+		QuestType: model.QuestType{
+			ID: req.QuestTypeID,
+		},
+		ActionType: model.ActionType{
+			ID: req.ActionTypeID,
+		},
+		Link:   req.Link,
+		ChatID: req.ChatID,
 	}
-	fmt.Println(quest.Validations)
 
 	questID, err := h.qs.CreateSocialQuest(c.Request.Context(), quest)
 	if err != nil {

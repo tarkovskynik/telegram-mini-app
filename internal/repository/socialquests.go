@@ -27,6 +27,16 @@ type questWithValidations struct {
 	Completed       bool           `db:"completed"`
 	StartedAt       *time.Time     `db:"started_at"`
 	FinishedAt      *time.Time     `db:"finished_at"`
+	Link            string         `db:"link"`
+	ChatID          int64          `db:"chat_id"`
+
+	QuestTypeID          int    `db:"quest_type_id"`
+	QuestTypeName        string `db:"quest_type_name"`
+	QuestTypeDescription string `db:"quest_type_description"`
+
+	ActionTypeID          int    `db:"action_type_id"`
+	ActionTypeName        string `db:"action_type_name"`
+	ActionTypeDescription string `db:"action_type_description"`
 }
 
 type questValidation struct {
@@ -42,17 +52,38 @@ func (r *Repository) GetQuestsData(ctx context.Context, telegramID int64) ([]*mo
 		"sq.description",
 		"sq.point_reward",
 		"sq.created_at",
+		"sq.link",
+		"sq.chat_id",
+
+		"qt.id AS quest_type_id",
+		"qt.name AS quest_type_name",
+		"qt.description AS quest_type_description",
+
+		"at.id AS action_type_id",
+		"at.name AS action_type_name",
+		"at.description AS action_type_description",
+
 		"array_agg(qv.validation_id) FILTER (WHERE qv.validation_id IS NOT NULL) as validation_ids",
 		"array_agg(sqvk.validation_name) FILTER (WHERE sqvk.validation_name IS NOT NULL) as validation_names",
+
 		"usq.completed",
 		"usq.started_at",
 		"usq.finished_at",
 	).
 		From("social_quests sq").
+		LeftJoin("quest_types qt ON sq.quest_type_id = qt.id").
+		LeftJoin("action_types at ON sq.action_type_id = at.id").
 		LeftJoin("quest_validations qv ON qv.quest_id = sq.quest_id").
 		LeftJoin("social_quest_validation_kinds sqvk ON qv.validation_id = sqvk.validation_id").
 		LeftJoin("users_social_quests usq ON usq.social_quest_id = sq.quest_id AND usq.user_telegram_id = ?", telegramID).
-		GroupBy("sq.quest_id", "usq.completed", "usq.started_at", "usq.finished_at").
+		GroupBy(
+			"sq.quest_id",
+			"qt.id", "qt.name", "qt.description",
+			"at.id", "at.name", "at.description",
+			"usq.completed",
+			"usq.started_at",
+			"usq.finished_at",
+		).
 		OrderBy("sq.quest_id").
 		PlaceholderFormat(squirrel.Dollar)
 
@@ -68,10 +99,6 @@ func (r *Repository) GetQuestsData(ctx context.Context, telegramID int64) ([]*mo
 			return []*model.SocialQuest{}, []*model.UserSocialQuest{}, nil
 		}
 		return nil, nil, err
-	}
-	fmt.Println("dbQuests repo:")
-	for _, q := range dbQuests {
-		fmt.Println("validations required", q.ValidationIDs)
 	}
 
 	quests := make([]*model.SocialQuest, len(dbQuests))
@@ -94,6 +121,18 @@ func (r *Repository) GetQuestsData(ctx context.Context, telegramID int64) ([]*mo
 			PointReward: q.PointReward,
 			CreatedAt:   q.CreatedAt,
 			Validations: validations,
+			QuestType: model.QuestType{
+				ID:          q.QuestTypeID,
+				Name:        q.QuestTypeName,
+				Description: q.QuestTypeDescription,
+			},
+			ActionType: model.ActionType{
+				ID:          q.ActionTypeID,
+				Name:        q.ActionTypeName,
+				Description: q.ActionTypeDescription,
+			},
+			Link:   q.Link,
+			ChatID: q.ChatID,
 		}
 
 		userQuests[i] = &model.UserSocialQuest{
@@ -152,18 +191,39 @@ func (r *Repository) GetQuestDataByID(ctx context.Context, telegramID int64, que
 		"sq.description",
 		"sq.point_reward",
 		"sq.created_at",
+		"sq.link",
+		"sq.chat_id",
+
+		"qt.id AS quest_type_id",
+		"qt.name AS quest_type_name",
+		"qt.description AS quest_type_description",
+
+		"at.id AS action_type_id",
+		"at.name AS action_type_name",
+		"at.description AS action_type_description",
+
 		"array_agg(qv.validation_id) FILTER (WHERE qv.validation_id IS NOT NULL) as validation_ids",
 		"array_agg(sqvk.validation_name) FILTER (WHERE sqvk.validation_name IS NOT NULL) as validation_names",
+
 		"usq.completed",
 		"usq.started_at",
 		"usq.finished_at",
 	).
 		From("social_quests sq").
+		LeftJoin("quest_types qt ON sq.quest_type_id = qt.id").
+		LeftJoin("action_types at ON sq.action_type_id = at.id").
 		LeftJoin("quest_validations qv ON qv.quest_id = sq.quest_id").
 		LeftJoin("social_quest_validation_kinds sqvk ON qv.validation_id = sqvk.validation_id").
 		LeftJoin("users_social_quests usq ON usq.social_quest_id = sq.quest_id AND usq.user_telegram_id = ?", telegramID).
 		Where(squirrel.Eq{"sq.quest_id": questID}).
-		GroupBy("sq.quest_id", "usq.completed", "usq.started_at", "usq.finished_at").
+		GroupBy(
+			"sq.quest_id",
+			"qt.id", "qt.name", "qt.description",
+			"at.id", "at.name", "at.description",
+			"usq.completed",
+			"usq.started_at",
+			"usq.finished_at",
+		).
 		PlaceholderFormat(squirrel.Dollar)
 
 	sqlQuery, args, err := query.ToSql()
@@ -196,6 +256,18 @@ func (r *Repository) GetQuestDataByID(ctx context.Context, telegramID int64, que
 		PointReward: dbQuest.PointReward,
 		CreatedAt:   dbQuest.CreatedAt,
 		Validations: validations,
+		QuestType: model.QuestType{
+			ID:          dbQuest.QuestTypeID,
+			Name:        dbQuest.QuestTypeName,
+			Description: dbQuest.QuestTypeDescription,
+		},
+		ActionType: model.ActionType{
+			ID:          dbQuest.ActionTypeID,
+			Name:        dbQuest.ActionTypeName,
+			Description: dbQuest.ActionTypeDescription,
+		},
+		Link:   dbQuest.Link,
+		ChatID: dbQuest.ChatID,
 	}
 
 	userQuest := &model.UserSocialQuest{
@@ -278,12 +350,16 @@ func (r *Repository) CreateSocialQuest(ctx context.Context, quest *model.SocialQ
 		questQuery, args, err := squirrel.
 			Insert("social_quests").
 			SetMap(map[string]interface{}{
-				"quest_id":     quest.QuestID,
-				"image":        quest.Image,
-				"title":        quest.Title,
-				"description":  quest.Description,
-				"point_reward": quest.PointReward,
-				"created_at":   time.Now(),
+				"quest_id":       quest.QuestID,
+				"image":          quest.Image,
+				"title":          quest.Title,
+				"description":    quest.Description,
+				"point_reward":   quest.PointReward,
+				"created_at":     time.Now(),
+				"link":           quest.Link,
+				"chat_id":        quest.ChatID,
+				"quest_type_id":  quest.QuestType.ID,
+				"action_type_id": quest.ActionType.ID,
 			}).
 			PlaceholderFormat(squirrel.Dollar).
 			ToSql()

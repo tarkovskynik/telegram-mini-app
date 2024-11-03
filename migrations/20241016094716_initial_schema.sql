@@ -2,7 +2,6 @@
 -- +goose StatementBegin
 -- Enable UUID extension
 
--- Create users table
 CREATE TABLE users (
                        telegram_id BIGINT PRIMARY KEY,
                        handle VARCHAR(255) UNIQUE,
@@ -17,13 +16,38 @@ CREATE TABLE users (
 );
 CREATE INDEX idx_users_points ON users(points DESC);
 
+CREATE TABLE quest_types (
+                             id INTEGER PRIMARY KEY,
+                             name VARCHAR(255) NOT NULL,
+                             description TEXT
+);
+
+CREATE TABLE action_types (
+                              id INTEGER PRIMARY KEY,
+                              name VARCHAR(255) NOT NULL,
+                              description TEXT
+);
+
+INSERT INTO quest_types (id, name, description) VALUES
+                                                    (1, 'daily', 'Quests that reset daily'),
+                                                    (2, 'weekly', 'Quests that reset weekly'),
+                                                    (3, 'partnership', 'Partner promotional quests');
+
+INSERT INTO action_types (id, name, description) VALUES
+                                                     (1, 'follow', 'Follow action on social media'),
+                                                     (2, 'website', 'Visit or interact with website');
+
 CREATE TABLE social_quests (
                                quest_id UUID PRIMARY KEY,
+                               quest_type_id INTEGER REFERENCES quest_types(id),
+                               action_type_id INTEGER REFERENCES action_types(id),
                                image VARCHAR(255),
                                title VARCHAR(255),
                                description TEXT,
                                point_reward INTEGER,
-                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                               link VARCHAR(255),
+                               chat_id BIGINT
 );
 
 CREATE TABLE users_social_quests (
@@ -32,13 +56,15 @@ CREATE TABLE users_social_quests (
                                      completed BOOLEAN DEFAULT FALSE,
                                      started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                      finished_at TIMESTAMP,
+
                                      PRIMARY KEY (user_telegram_id, social_quest_id)
 );
 
 CREATE TABLE social_quest_validation_kinds (
                                                validation_id SERIAL PRIMARY KEY,
-                                               validation_name VARCHAR(255) UNIQUE
+                                               validation_name VARCHAR(255) UNIQUE NOT NULL
 );
+
 
 CREATE TABLE user_validations (
                                   user_telegram_id BIGINT REFERENCES users(telegram_id),
@@ -69,4 +95,6 @@ DROP TABLE IF EXISTS social_quest_validation_kinds;
 DROP TABLE IF EXISTS users_social_quests;
 DROP TABLE IF EXISTS social_quests;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS action_types;
+DROP TABLE IF EXISTS quest_types;
 -- +goose StatementEnd
