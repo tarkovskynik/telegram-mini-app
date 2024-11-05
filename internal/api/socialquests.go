@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"UD_telegram_miniapp/internal/model"
 	"UD_telegram_miniapp/internal/repository"
@@ -46,15 +47,17 @@ func NewSocialQuestRoutes(handler *gin.RouterGroup, qs *service.SocialQuestServi
 }
 
 type questResponse struct {
-	QuestID     string `json:"quest_id"`
-	QuestType   string `json:"quest_type"`
-	ActionType  string `json:"action_type"`
-	Image       string `json:"img"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	PointReward int    `json:"point_reward"`
-	Link        string `json:"link"`
-	ChatID      int64  `json:"chat_id"`
+	QuestID       string `json:"quest_id"`
+	QuestType     string `json:"quest_type"`
+	ActionType    string `json:"action_type"`
+	Image         string `json:"img"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	PointReward   int    `json:"point_reward"`
+	AvailableFrom *int64 `json:"available_from"`
+	ExpiresAt     *int64 `json:"expires_at"`
+	Link          string `json:"link"`
+	ChatID        int64  `json:"chat_id"`
 
 	Completed  bool   `json:"completed"`
 	StartedAt  *int64 `json:"started_at"`
@@ -114,27 +117,39 @@ func (h *socialQuestRoutes) GetUserQuests(c *gin.Context) {
 			}
 		}
 
-		var started, finished *int64
-		if userQuest.StartedAt != nil {
-			unix := userQuest.StartedAt.Unix()
-			started = &unix
+		//var started, finished *int64
+		//if userQuest.StartedAt != nil {
+		//	unix := userQuest.StartedAt.Unix()
+		//	started = &unix
+		//}
+		//if userQuest.FinishedAt != nil {
+		//	unix := userQuest.FinishedAt.Unix()
+		//	finished = &unix
+		//}
+
+		var availableFrom, expiresAt *int64
+		if quest.AvailableFrom != nil {
+			unix := quest.AvailableFrom.Unix()
+			availableFrom = &unix
 		}
-		if userQuest.FinishedAt != nil {
-			unix := userQuest.FinishedAt.Unix()
-			finished = &unix
+		if quest.ExpiresAt != nil {
+			unix := quest.ExpiresAt.Unix()
+			expiresAt = &unix
 		}
 
 		response[i] = questResponse{
-			QuestID:             quest.QuestID.String(),
-			QuestType:           quest.QuestType.Name,
-			ActionType:          quest.ActionType.Name,
-			Image:               quest.Image,
-			Title:               quest.Title,
-			Description:         quest.Description,
-			PointReward:         quest.PointReward,
-			Completed:           userQuest.Completed,
-			StartedAt:           started,
-			FinishedAt:          finished,
+			QuestID:       quest.QuestID.String(),
+			QuestType:     quest.QuestType.Name,
+			ActionType:    quest.ActionType.Name,
+			Image:         quest.Image,
+			Title:         quest.Title,
+			Description:   quest.Description,
+			PointReward:   quest.PointReward,
+			Completed:     userQuest.Completed,
+			AvailableFrom: availableFrom,
+			ExpiresAt:     expiresAt,
+			//StartedAt:           started,
+			//FinishedAt:          finished,
 			Link:                quest.Link,
 			ChatID:              quest.ChatID,
 			ValidationsRequired: validationsRequired,
@@ -192,27 +207,39 @@ func (h *socialQuestRoutes) GetQuestByID(c *gin.Context) {
 		}
 	}
 
-	var started, finished *int64
-	if userQuest.StartedAt != nil {
-		unix := userQuest.StartedAt.Unix()
-		started = &unix
+	//var started, finished *int64
+	//if userQuest.StartedAt != nil {
+	//	unix := userQuest.StartedAt.Unix()
+	//	started = &unix
+	//}
+	//if userQuest.FinishedAt != nil {
+	//	unix := userQuest.FinishedAt.Unix()
+	//	finished = &unix
+	//}
+
+	var availableFrom, expiresAt *int64
+	if quest.AvailableFrom != nil {
+		unix := quest.AvailableFrom.Unix()
+		availableFrom = &unix
 	}
-	if userQuest.FinishedAt != nil {
-		unix := userQuest.FinishedAt.Unix()
-		finished = &unix
+	if quest.ExpiresAt != nil {
+		unix := quest.ExpiresAt.Unix()
+		expiresAt = &unix
 	}
 
 	response := questResponse{
-		QuestID:             quest.QuestID.String(),
-		QuestType:           quest.QuestType.Name,
-		ActionType:          quest.ActionType.Name,
-		Image:               quest.Image,
-		Title:               quest.Title,
-		Description:         quest.Description,
-		PointReward:         quest.PointReward,
-		Completed:           userQuest.Completed,
-		StartedAt:           started,
-		FinishedAt:          finished,
+		QuestID:       quest.QuestID.String(),
+		QuestType:     quest.QuestType.Name,
+		ActionType:    quest.ActionType.Name,
+		Image:         quest.Image,
+		Title:         quest.Title,
+		Description:   quest.Description,
+		PointReward:   quest.PointReward,
+		Completed:     userQuest.Completed,
+		AvailableFrom: availableFrom,
+		ExpiresAt:     expiresAt,
+		//StartedAt:           started,
+		//FinishedAt:          finished,
 		Link:                quest.Link,
 		ChatID:              quest.ChatID,
 		ValidationsRequired: validationsRequired,
@@ -261,6 +288,8 @@ type CreateSocialQuestRequest struct {
 	Title         string `json:"title" binding:"required"`
 	Description   string `json:"description"`
 	PointReward   int    `json:"point_reward" binding:"required,min=1"`
+	AvailableFrom *int64 `json:"available_from"`
+	ExpiresAt     *int64 `json:"expires_at"`
 	ValidationIDs []int  `json:"validation_id_list"`
 	QuestTypeID   int    `json:"quest_type_id" binding:"required"`
 	ActionTypeID  int    `json:"action_type_id" binding:"required"`
@@ -281,13 +310,25 @@ func (h *socialQuestRoutes) CreateSocialQuest(c *gin.Context) {
 		validations = append(validations, qv)
 	}
 
+	var availableFrom, expiresAt *time.Time
+	if req.AvailableFrom != nil {
+		af := time.Unix(*req.AvailableFrom, 0).UTC()
+		availableFrom = &af
+	}
+	if req.ExpiresAt != nil {
+		ea := time.Unix(*req.ExpiresAt, 0).UTC()
+		expiresAt = &ea
+	}
+
 	quest := &model.SocialQuest{
-		QuestID:     uuid.New(),
-		Image:       req.Image,
-		Title:       req.Title,
-		Description: req.Description,
-		PointReward: req.PointReward,
-		Validations: validations,
+		QuestID:       uuid.New(),
+		Image:         req.Image,
+		Title:         req.Title,
+		Description:   req.Description,
+		PointReward:   req.PointReward,
+		AvailableFrom: availableFrom,
+		ExpiresAt:     expiresAt,
+		Validations:   validations,
 		QuestType: model.QuestType{
 			ID: req.QuestTypeID,
 		},

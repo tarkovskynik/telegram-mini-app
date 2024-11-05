@@ -19,6 +19,8 @@ var (
 	ErrQuestNotFound           = errors.New("quest not found")
 	ErrValidationNotFound      = errors.New("validation not found")
 	ErrValidationAlreadyExists = errors.New("validation already exists for quest")
+
+	ErrAlreadyClaimed = errors.New("already claimed")
 )
 
 type Repository struct {

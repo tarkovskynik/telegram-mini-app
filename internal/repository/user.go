@@ -28,6 +28,12 @@ type User struct {
 	AuthDate         time.Time `db:"last_auth_date"`
 }
 
+type userReferral struct {
+	TelegramUsername string `db:"username"`
+	ReferralCount    int    `db:"referrals"`
+	Points           int    `db:"points"`
+}
+
 func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
 		query, args, err := squirrel.
@@ -162,9 +168,8 @@ func (r *Repository) GetUserByTelegramID(ctx context.Context, telegramID int64) 
 	}, nil
 }
 
-func (r *Repository) getUserWithTx(tx *sqlx.Tx, telegramID int64) (*model.User, error) {
+func (r *Repository) getUserWithTx(ctx context.Context, tx *sqlx.Tx, telegramID int64) (*model.User, error) {
 	var user User
-
 	query, args, err := squirrel.
 		Select("*").
 		From("users").
@@ -175,7 +180,7 @@ func (r *Repository) getUserWithTx(tx *sqlx.Tx, telegramID int64) (*model.User, 
 		return nil, err
 	}
 
-	err = tx.Get(&user, query, args...)
+	err = tx.GetContext(ctx, &user, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -199,7 +204,7 @@ func (r *Repository) getUserWithTx(tx *sqlx.Tx, telegramID int64) (*model.User, 
 
 func (r *Repository) UpdateUserPoints(ctx context.Context, telegramID int64, points int) error {
 	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
-		user, err := r.getUserWithTx(tx, telegramID)
+		user, err := r.getUserWithTx(ctx, tx, telegramID)
 		if err != nil {
 			return err
 		}
@@ -242,9 +247,52 @@ func (r *Repository) UpdateUserPoints(ctx context.Context, telegramID int64, poi
 	})
 }
 
+func (r *Repository) updateUserPointsWithTx(ctx context.Context, tx *sqlx.Tx, telegramID int64, points int) error {
+	user, err := r.getUserWithTx(ctx, tx, telegramID)
+	if err != nil {
+		return err
+	}
+
+	updateQuery, updateArgs, err := squirrel.
+		Update("users").
+		Set("points", squirrel.Expr("points + ?", points)).
+		Where(squirrel.Eq{"telegram_id": telegramID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, updateQuery, updateArgs...)
+	if err != nil {
+		return err
+	}
+
+	if user.ReferrerID != nil {
+		referrerPoints := int(math.Ceil(float64(points) * 0.1))
+
+		updateReferrerQuery, referrerArgs, err := squirrel.
+			Update("users").
+			Set("points", squirrel.Expr("points + ?", referrerPoints)).
+			Where(squirrel.Eq{"telegram_id": user.ReferrerID}).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.ExecContext(ctx, updateReferrerQuery, referrerArgs...)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *Repository) UpdateUserWaitlistStatus(ctx context.Context, telegramID int64, status bool) error {
 	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
-		_, err := r.getUserWithTx(tx, telegramID)
+		_, err := r.getUserWithTx(ctx, tx, telegramID)
 		if err != nil {
 			return err
 		}
@@ -259,7 +307,7 @@ func (r *Repository) UpdateUserWaitlistStatus(ctx context.Context, telegramID in
 			return err
 		}
 
-		_, err = tx.Exec(updateQuery, updateArgs...)
+		_, err = tx.ExecContext(ctx, updateQuery, updateArgs...)
 		if err != nil {
 			return err
 		}
@@ -296,7 +344,7 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 			return err
 		}
 
-		err = tx.Select(&users, query, args...)
+		err = tx.SelectContext(ctx, &users, query, args...)
 		if err != nil {
 			return err
 		}
@@ -318,4 +366,38 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 	}
 
 	return userList, nil
+}
+
+func (r *Repository) GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error) {
+	query := squirrel.Select(
+		"username",
+		"referrals",
+		"points",
+	).
+		From("users").
+		Where(squirrel.Eq{"referrer_id": telegramID}).
+		OrderBy("points DESC").
+		PlaceholderFormat(squirrel.Dollar)
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	var referrals []*userReferral
+	err = r.db.SelectContext(ctx, &referrals, sqlQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user referrals: %w", err)
+	}
+
+	refs := make([]*model.UserReferral, len(referrals))
+	for i, ref := range referrals {
+		refs[i] = &model.UserReferral{
+			TelegramUsername: ref.TelegramUsername,
+			ReferralCount:    ref.ReferralCount,
+			Points:           ref.Points,
+		}
+	}
+
+	return refs, nil
 }

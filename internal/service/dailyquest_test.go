@@ -66,7 +66,7 @@ func TestDailyQuestService_GetStatus(t *testing.T) {
 			name:       "Recently claimed (not available)",
 			telegramID: 125,
 			mockSetup: func() {
-				lastClaimed := time.Now().Add(-12 * time.Hour)
+				lastClaimed := time.Now().UTC().Add(-12 * time.Hour)
 				mockRepo.On("GetDailyQuestStatus", mock.Anything, int64(125)).
 					Return(&model.DailyQuest{
 						UserTelegramID:         125,

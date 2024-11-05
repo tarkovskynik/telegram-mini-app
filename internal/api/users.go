@@ -28,6 +28,7 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 		h.GET("/:telegram_id/waitlist", r.GetUserWaitlistStatus)
 		h.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
 		h.GET("/leaderboard", r.GetLeaderboard)
+		h.GET("/:telegram_id/referrals", r.GetUserReferrals)
 	}
 }
 
@@ -200,4 +201,40 @@ func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+type userReferral struct {
+	TelegramUsername string `json:"telegram_username"`
+	ReferralCount    int    `json:"referral_count"`
+	Points           int    `json:"points"`
+}
+
+func (r *userRoutes) GetUserReferrals(c *gin.Context) {
+	log := logger.Logger()
+
+	telegramID := c.Param("telegram_id")
+	id, err := strconv.ParseInt(telegramID, 10, 64)
+	if err != nil {
+		log.Error("failed to parse telegram_id", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+		return
+	}
+
+	referrals, err := r.us.GetUserReferrals(c.Request.Context(), id)
+	if err != nil {
+		log.Error("failed to get user referrals", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user referrals"})
+		return
+	}
+
+	out := make([]userReferral, len(referrals))
+	for i, ref := range referrals {
+		out[i] = userReferral{
+			TelegramUsername: ref.TelegramUsername,
+			ReferralCount:    ref.ReferralCount,
+			Points:           ref.Points,
+		}
+	}
+
+	c.JSON(http.StatusOK, out)
 }

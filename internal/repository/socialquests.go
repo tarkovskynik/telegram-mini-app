@@ -16,19 +16,23 @@ import (
 )
 
 type questWithValidations struct {
-	QuestID         uuid.UUID      `db:"quest_id"`
-	Image           string         `db:"image"`
-	Title           string         `db:"title"`
-	Description     string         `db:"description"`
-	PointReward     int            `db:"point_reward"`
-	CreatedAt       time.Time      `db:"created_at"`
+	QuestID       uuid.UUID  `db:"quest_id"`
+	Image         string     `db:"image"`
+	Title         string     `db:"title"`
+	Description   string     `db:"description"`
+	PointReward   int        `db:"point_reward"`
+	CreatedAt     time.Time  `db:"created_at"`
+	AvailableFrom *time.Time `db:"available_from"`
+	ExpiresAt     *time.Time `db:"expires_at"`
+	Link          string     `db:"link"`
+	ChatID        int64      `db:"chat_id"`
+
 	ValidationIDs   pq.Int64Array  `db:"validation_ids"`
 	ValidationNames pq.StringArray `db:"validation_names"`
-	Completed       bool           `db:"completed"`
-	StartedAt       *time.Time     `db:"started_at"`
-	FinishedAt      *time.Time     `db:"finished_at"`
-	Link            string         `db:"link"`
-	ChatID          int64          `db:"chat_id"`
+
+	Completed  bool       `db:"completed"`
+	StartedAt  *time.Time `db:"started_at"`
+	FinishedAt *time.Time `db:"finished_at"`
 
 	QuestTypeID          int    `db:"quest_type_id"`
 	QuestTypeName        string `db:"quest_type_name"`
@@ -52,6 +56,8 @@ func (r *Repository) GetQuestsData(ctx context.Context, telegramID int64) ([]*mo
 		"sq.description",
 		"sq.point_reward",
 		"sq.created_at",
+		"sq.available_from",
+		"sq.expires_at",
 		"sq.link",
 		"sq.chat_id",
 
@@ -114,13 +120,15 @@ func (r *Repository) GetQuestsData(ctx context.Context, telegramID int64) ([]*mo
 		}
 
 		quests[i] = &model.SocialQuest{
-			QuestID:     q.QuestID,
-			Image:       q.Image,
-			Title:       q.Title,
-			Description: q.Description,
-			PointReward: q.PointReward,
-			CreatedAt:   q.CreatedAt,
-			Validations: validations,
+			QuestID:       q.QuestID,
+			Image:         q.Image,
+			Title:         q.Title,
+			Description:   q.Description,
+			PointReward:   q.PointReward,
+			CreatedAt:     q.CreatedAt,
+			AvailableFrom: q.AvailableFrom,
+			ExpiresAt:     q.ExpiresAt,
+			Validations:   validations,
 			QuestType: model.QuestType{
 				ID:          q.QuestTypeID,
 				Name:        q.QuestTypeName,
@@ -191,6 +199,8 @@ func (r *Repository) GetQuestDataByID(ctx context.Context, telegramID int64, que
 		"sq.description",
 		"sq.point_reward",
 		"sq.created_at",
+		"sq.available_from",
+		"sq.expires_at",
 		"sq.link",
 		"sq.chat_id",
 
@@ -249,13 +259,15 @@ func (r *Repository) GetQuestDataByID(ctx context.Context, telegramID int64, que
 	}
 
 	quest := &model.SocialQuest{
-		QuestID:     dbQuest.QuestID,
-		Image:       dbQuest.Image,
-		Title:       dbQuest.Title,
-		Description: dbQuest.Description,
-		PointReward: dbQuest.PointReward,
-		CreatedAt:   dbQuest.CreatedAt,
-		Validations: validations,
+		QuestID:       dbQuest.QuestID,
+		Image:         dbQuest.Image,
+		Title:         dbQuest.Title,
+		Description:   dbQuest.Description,
+		PointReward:   dbQuest.PointReward,
+		CreatedAt:     dbQuest.CreatedAt,
+		AvailableFrom: dbQuest.AvailableFrom,
+		ExpiresAt:     dbQuest.ExpiresAt,
+		Validations:   validations,
 		QuestType: model.QuestType{
 			ID:          dbQuest.QuestTypeID,
 			Name:        dbQuest.QuestTypeName,
@@ -285,7 +297,7 @@ func (r *Repository) ClaimQuest(ctx context.Context, telegramID int64, questID u
 	updateQuery, args, err := squirrel.
 		Update("users_social_quests").
 		Set("completed", true).
-		Set("finished_at", time.Now()).
+		Set("finished_at", time.Now().UTC()).
 		Where(squirrel.And{
 			squirrel.Eq{
 				"user_telegram_id": telegramID,
@@ -355,7 +367,9 @@ func (r *Repository) CreateSocialQuest(ctx context.Context, quest *model.SocialQ
 				"title":          quest.Title,
 				"description":    quest.Description,
 				"point_reward":   quest.PointReward,
-				"created_at":     time.Now(),
+				"created_at":     time.Now().UTC(),
+				"available_from": quest.AvailableFrom,
+				"expires_at":     quest.ExpiresAt,
 				"link":           quest.Link,
 				"chat_id":        quest.ChatID,
 				"quest_type_id":  quest.QuestType.ID,
@@ -579,4 +593,208 @@ func (r *Repository) RemoveQuestValidation(ctx context.Context, questID uuid.UUI
 	}
 
 	return nil
+}
+
+func (r *Repository) CreateReferralQuest(ctx context.Context, quest *model.ReferralQuest) (uuid.UUID, error) {
+	err := r.Transaction(ctx, func(tx *sqlx.Tx) error {
+		questQuery, args, err := squirrel.
+			Insert("referral_quests").
+			SetMap(map[string]interface{}{
+				"quest_id":           quest.QuestID,
+				"referrals_required": quest.ReferralsRequired,
+				"point_reward":       quest.PointReward,
+				"created_at":         time.Now(),
+			}).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build quest insert query: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, questQuery, args...); err != nil {
+			return fmt.Errorf("failed to insert referral quest: %w", err)
+		}
+
+		userQuery, userArgs, err := squirrel.
+			Select("telegram_id").
+			From("users").
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build users select query: %w", err)
+		}
+
+		var userIDs []int64
+		if err := tx.SelectContext(ctx, &userIDs, userQuery, userArgs...); err != nil {
+			return fmt.Errorf("failed to get user IDs: %w", err)
+		}
+
+		if len(userIDs) > 0 {
+			userQuestBuilder := squirrel.
+				Insert("referral_quests_users").
+				Columns("user_telegram_id", "quest_id", "completed").
+				PlaceholderFormat(squirrel.Dollar)
+
+			for _, userID := range userIDs {
+				userQuestBuilder = userQuestBuilder.Values(userID, quest.QuestID, false)
+			}
+
+			userQuestQuery, userQuestArgs, err := userQuestBuilder.ToSql()
+			if err != nil {
+				return fmt.Errorf("failed to build referral_quests_users insert query: %w", err)
+			}
+
+			if _, err := tx.ExecContext(ctx, userQuestQuery, userQuestArgs...); err != nil {
+				return fmt.Errorf("failed to insert referral_quests_users entries: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	return quest.QuestID, nil
+}
+
+type referralQuestWithStatus struct {
+	QuestID           uuid.UUID  `db:"quest_id"`
+	ReferralsRequired int        `db:"referrals_required"`
+	PointReward       int        `db:"point_reward"`
+	CurrentReferrals  int        `db:"current_referrals"`
+	Completed         bool       `db:"completed"`
+	StartedAt         *time.Time `db:"started_at"`
+	FinishedAt        *time.Time `db:"finished_at"`
+}
+
+func (r *Repository) GetUserReferralQuestStatuses(ctx context.Context, telegramID int64) ([]*model.ReferralQuestStatus, error) {
+	query := squirrel.Select(
+		"rq.quest_id",
+		"rq.referrals_required",
+		"rq.point_reward",
+		"rqu.completed",
+		"rqu.started_at",
+		"rqu.finished_at",
+		"u.referrals as current_referrals",
+	).
+		From("referral_quests_users rqu").
+		Join("referral_quests rq ON rq.quest_id = rqu.quest_id").
+		Join("users u ON u.telegram_id = rqu.user_telegram_id").
+		Where(squirrel.Eq{"rqu.user_telegram_id": telegramID}).
+		OrderBy("rq.created_at DESC").
+		PlaceholderFormat(squirrel.Dollar)
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	var statuses []referralQuestWithStatus
+	if err := r.db.SelectContext(ctx, &statuses, sqlQuery, args...); err != nil {
+		return nil, fmt.Errorf("failed to get quest statuses: %w", err)
+	}
+
+	statusList := make([]*model.ReferralQuestStatus, len(statuses))
+	for i, status := range statuses {
+		statusList[i] = &model.ReferralQuestStatus{
+			QuestID:           status.QuestID,
+			ReferralsRequired: status.ReferralsRequired,
+			PointReward:       status.PointReward,
+			CurrentReferrals:  status.CurrentReferrals,
+			Completed:         status.Completed,
+			StartedAt:         status.StartedAt,
+			FinishedAt:        status.FinishedAt,
+		}
+	}
+
+	return statusList, nil
+}
+
+func (r *Repository) GetSingleQuestStatus(ctx context.Context, telegramID int64, questID uuid.UUID) (*model.ReferralQuestStatus, error) {
+	query := squirrel.Select(
+		"rq.quest_id",
+		"rq.referrals_required",
+		"rq.point_reward",
+		"rqu.completed",
+		"rqu.started_at",
+		"rqu.finished_at",
+		"u.referrals as current_referrals",
+	).
+		From("referral_quests_users rqu").
+		Join("referral_quests rq ON rq.quest_id = rqu.quest_id").
+		Join("users u ON u.telegram_id = rqu.user_telegram_id").
+		Where(squirrel.Eq{
+			"rqu.user_telegram_id": telegramID,
+			"rq.quest_id":          questID,
+		}).
+		PlaceholderFormat(squirrel.Dollar)
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	var status referralQuestWithStatus
+	err = r.db.GetContext(ctx, &status, sqlQuery, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get quest status: %w", err)
+	}
+
+	s := &model.ReferralQuestStatus{
+		QuestID:           status.QuestID,
+		ReferralsRequired: status.ReferralsRequired,
+		PointReward:       status.PointReward,
+		CurrentReferrals:  status.CurrentReferrals,
+		Completed:         status.Completed,
+		StartedAt:         status.StartedAt,
+		FinishedAt:        status.FinishedAt,
+	}
+
+	return s, nil
+}
+
+func (r *Repository) ClaimReferralQuest(ctx context.Context, telegramID int64, questID uuid.UUID, pointReward int) error {
+	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
+		now := time.Now()
+		updateQuery, args, err := squirrel.
+			Update("referral_quests_users").
+			SetMap(map[string]interface{}{
+				"completed":   true,
+				"finished_at": now,
+			}).
+			Where(squirrel.Eq{
+				"user_telegram_id": telegramID,
+				"quest_id":         questID,
+				"completed":        false,
+			}).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build update query: %w", err)
+		}
+
+		result, err := tx.ExecContext(ctx, updateQuery, args...)
+		if err != nil {
+			return fmt.Errorf("failed to update quest status: %w", err)
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get affected rows: %w", err)
+		}
+		if rows == 0 {
+			return ErrAlreadyClaimed
+		}
+
+		if err := r.updateUserPointsWithTx(ctx, tx, telegramID, pointReward); err != nil {
+			return fmt.Errorf("failed to update points: %w", err)
+		}
+
+		return nil
+	})
 }

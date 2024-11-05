@@ -46,6 +46,8 @@ CREATE TABLE social_quests (
                                description TEXT,
                                point_reward INTEGER,
                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                               available_from TIMESTAMP,
+                               expires_at TIMESTAMP,
                                link VARCHAR(255),
                                chat_id BIGINT
 );
@@ -84,6 +86,24 @@ CREATE TABLE daily_quests (
                               last_claimed_at TIMESTAMP,
                               consecutive_days_claimed INTEGER DEFAULT 0
 );
+
+CREATE TABLE referral_quests (
+                                 quest_id UUID PRIMARY KEY,
+                                 referrals_required INTEGER NOT NULL,
+                                 point_reward INTEGER NOT NULL,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE referral_quests_users (
+                                       user_telegram_id BIGINT REFERENCES users(telegram_id),
+                                       quest_id UUID REFERENCES referral_quests(quest_id),
+                                       completed BOOLEAN DEFAULT FALSE,
+                                       started_at TIMESTAMP,
+                                       finished_at TIMESTAMP,
+                                       PRIMARY KEY (user_telegram_id, quest_id)
+);
+
+CREATE INDEX idx_referral_quests_users_completed ON referral_quests_users(completed);
 -- +goose StatementEnd
 
 -- +goose Down

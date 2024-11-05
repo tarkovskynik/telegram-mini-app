@@ -14,3 +14,9 @@ type User struct {
 	RegistrationDate time.Time
 	AuthDate         time.Time
 }
+
+type UserReferral struct {
+	TelegramUsername string
+	ReferralCount    int
+	Points           int
+}

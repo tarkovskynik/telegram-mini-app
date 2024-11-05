@@ -65,6 +65,7 @@ func main() {
 	api.NewUserRoutes(a, userService, telegramAuth)
 	api.NewDailyQuestRoutes(a, dailyQuestService, telegramAuth)
 	api.NewSocialQuestRoutes(a, socialQuestService, telegramAuth)
+	api.NewReferralQuestRoutes(a, socialQuestService, telegramAuth)
 
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	zapLogger.Info("Starting server", zap.String("addr", addr))

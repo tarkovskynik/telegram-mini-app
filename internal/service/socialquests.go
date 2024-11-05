@@ -127,3 +127,64 @@ func (s *SocialQuestService) RemoveQuestValidation(ctx context.Context, questID 
 	}
 	return nil
 }
+
+func (s *SocialQuestService) CreateReferralQuest(ctx context.Context, quest *model.ReferralQuest) (uuid.UUID, error) {
+	questID, err := s.repo.CreateReferralQuest(ctx, quest)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to create referral quest: %w", err)
+	}
+
+	return questID, nil
+}
+
+func (s *SocialQuestService) GetUserQuestStatuses(ctx context.Context, telegramID int64) ([]*model.ReferralQuestStatus, error) {
+	statuses, err := s.repo.GetUserReferralQuestStatuses(ctx, telegramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get quest statuses: %w", err)
+	}
+
+	if len(statuses) == 0 {
+		return []*model.ReferralQuestStatus{}, nil
+	}
+
+	for _, status := range statuses {
+		status.ReadyToClaim = !status.Completed && status.CurrentReferrals >= status.ReferralsRequired
+	}
+
+	return statuses, nil
+}
+
+func (s *SocialQuestService) GetReferralQuestStatus(ctx context.Context, telegramID int64, questID uuid.UUID) (*model.ReferralQuestStatus, error) {
+	status, err := s.repo.GetSingleQuestStatus(ctx, telegramID, questID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrQuestNotFound
+		}
+		return nil, fmt.Errorf("failed to get quest status: %w", err)
+	}
+
+	status.ReadyToClaim = !status.Completed && status.CurrentReferrals >= status.ReferralsRequired
+
+	return status, nil
+}
+
+func (s *SocialQuestService) ClaimReferralQuest(ctx context.Context, telegramID int64, questID uuid.UUID) error {
+	status, err := s.GetReferralQuestStatus(ctx, telegramID, questID)
+	if err != nil {
+		return fmt.Errorf("failed to get quest status: %w", err)
+	}
+
+	if !status.ReadyToClaim {
+		if status.Completed {
+			return ErrQuestAlreadyClaimed
+		}
+		return ErrNotEnoughReferrals
+	}
+
+	err = s.repo.ClaimReferralQuest(ctx, telegramID, questID, status.PointReward)
+	if err != nil {
+		return fmt.Errorf("failed to claim quest: %w", err)
+	}
+
+	return nil
+}

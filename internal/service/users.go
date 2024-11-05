@@ -65,3 +65,11 @@ func (s *UserService) GetLeaderboard(ctx context.Context) ([]*model.User, error)
 	}
 	return users, nil
 }
+
+func (s *UserService) GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error) {
+	referrals, err := s.repo.GetUserReferrals(ctx, telegramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user referrals: %w", err)
+	}
+	return referrals, nil
+}

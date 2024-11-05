@@ -7,17 +7,19 @@ import (
 )
 
 type SocialQuest struct {
-	QuestID     uuid.UUID
-	QuestType   QuestType
-	ActionType  ActionType
-	Image       string
-	Title       string
-	Description string
-	PointReward int
-	CreatedAt   time.Time
-	Validations []QuestValidation
-	Link        string
-	ChatID      int64
+	QuestID       uuid.UUID
+	QuestType     QuestType
+	ActionType    ActionType
+	Image         string
+	Title         string
+	Description   string
+	PointReward   int
+	CreatedAt     time.Time
+	AvailableFrom *time.Time
+	ExpiresAt     *time.Time
+	Validations   []QuestValidation
+	Link          string
+	ChatID        int64
 }
 
 type UserSocialQuest struct {

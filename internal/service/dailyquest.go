@@ -88,7 +88,7 @@ func (s *DailyQuestService) Claim(ctx context.Context, telegramID int64) error {
 		return ErrClaimNotAvailable
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	newConsecutiveDays := status.ConsecutiveDaysClaimed + 1
 	if newConsecutiveDays > 7 {
 		newConsecutiveDays = 1

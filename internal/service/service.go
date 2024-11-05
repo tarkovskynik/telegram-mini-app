@@ -20,6 +20,8 @@ var (
 	ErrValidationNameExists    = errors.New("validation name already exists")
 	ErrValidationNotFound      = errors.New("validation not found")
 	ErrValidationAlreadyExists = errors.New("validation already exists for quest")
+
+	ErrNotEnoughReferrals = errors.New("not enough referrals")
 )
 
 type Service struct {
@@ -41,6 +43,7 @@ type UserServiceI interface {
 	UpdateUserWaitlistStatus(ctx context.Context, telegramID int64, status bool) error
 	GetUserWaitlistStatus(ctx context.Context, telegramID int64) (*bool, error)
 	GetLeaderboard(ctx context.Context) ([]*model.User, error)
+	GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error)
 }
 
 type UserRepository interface {
@@ -50,6 +53,7 @@ type UserRepository interface {
 	UpdateUserWaitlistStatus(ctx context.Context, telegramID int64, status bool) error
 	GetUserWaitlistStatus(ctx context.Context, telegramID int64) (*bool, error)
 	GetTopUsers(ctx context.Context, limit int) ([]*model.User, error)
+	GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error)
 }
 
 type DailyQuestServiceI interface {
@@ -74,6 +78,10 @@ type SocialQuestServiceI interface {
 	ListValidationKinds(ctx context.Context) ([]*model.QuestValidationKind, error)
 	AddQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
 	RemoveQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
+	CreateReferralQuest(ctx context.Context, quest *model.ReferralQuest) (uuid.UUID, error)
+	GetUserQuestStatuses(ctx context.Context, telegramID int64) ([]*model.ReferralQuestStatus, error)
+	GetReferralQuestStatus(ctx context.Context, telegramID int64, questID uuid.UUID) (*model.ReferralQuestStatus, error)
+	ClaimReferralQuest(ctx context.Context, telegramID int64, questID uuid.UUID) error
 }
 
 //go:generate mockery --name DailyQuestRepository --output ./mocks --structname MockDailyQuestRepository
@@ -94,4 +102,8 @@ type SocialQuestRepository interface {
 	RemoveQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
 	AddQuestValidation(ctx context.Context, questID uuid.UUID, validationID int) error
 	UpdateUserPoints(ctx context.Context, telegramID int64, points int) error
+	CreateReferralQuest(ctx context.Context, quest *model.ReferralQuest) (uuid.UUID, error)
+	GetUserReferralQuestStatuses(ctx context.Context, telegramID int64) ([]*model.ReferralQuestStatus, error)
+	GetSingleQuestStatus(ctx context.Context, telegramID int64, questID uuid.UUID) (*model.ReferralQuestStatus, error)
+	ClaimReferralQuest(ctx context.Context, telegramID int64, questID uuid.UUID, pointReward int) error
 }
