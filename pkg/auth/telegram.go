@@ -67,6 +67,10 @@ func (t *TelegramAuth) TelegramAuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+func (t *TelegramAuth) GetBotToken() string {
+	return t.botToken
+}
+
 type TelegramUserData struct {
 	ID       int64
 	Username string

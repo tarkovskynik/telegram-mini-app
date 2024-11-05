@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type userRoutes struct {
@@ -29,6 +31,8 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 		h.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
 		h.GET("/leaderboard", r.GetLeaderboard)
 		h.GET("/:telegram_id/referrals", r.GetUserReferrals)
+
+		h.GET("/:telegram_id/avatar", r.GetUserAvatar)
 	}
 }
 
@@ -237,4 +241,69 @@ func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, out)
+}
+
+func (r *userRoutes) GetUserAvatar(c *gin.Context) {
+	log := logger.Logger()
+
+	telegramID := c.Param("telegram_id")
+	id, err := strconv.ParseInt(telegramID, 10, 64)
+	if err != nil {
+		log.Error("failed to parse telegram_id", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+		return
+	}
+
+	_, err = r.us.GetUserByTelegramID(c.Request.Context(), id)
+	if err != nil {
+		log.Error("failed to get user", zap.Error(err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	avatarFilePath, err := r.getUserAvatarURL(id)
+	if err != nil {
+		log.Error("failed to get user avatar",
+			zap.Error(err),
+			zap.Int64("telegram_id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch avatar"})
+		return
+	}
+
+	if avatarFilePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no avatar found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"avatar_file_path": avatarFilePath,
+	})
+}
+
+func (r *userRoutes) getUserAvatarURL(userID int64) (string, error) {
+	bot, err := tgbotapi.NewBotAPI(r.a.GetBotToken())
+	if err != nil {
+		return "", fmt.Errorf("failed to initialize bot: %w", err)
+	}
+
+	photos, err := bot.GetUserProfilePhotos(tgbotapi.UserProfilePhotosConfig{
+		UserID: userID,
+		Limit:  1,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get user photos: %w", err)
+	}
+
+	if len(photos.Photos) == 0 {
+		return "", fmt.Errorf("no photo found")
+	}
+
+	file, err := bot.GetFile(tgbotapi.FileConfig{
+		FileID: photos.Photos[0][0].FileID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get file: %w", err)
+	}
+
+	return file.FilePath, nil
 }
