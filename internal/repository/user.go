@@ -56,7 +56,7 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 			return fmt.Errorf("failed to build user insert query: %w", err)
 		}
 
-		_, err = tx.Exec(query, args...)
+		_, err = tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("failed to insert user: %w", err)
 		}
@@ -72,7 +72,7 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 				return fmt.Errorf("failed to build referrer update query: %w", err)
 			}
 
-			_, err = tx.Exec(updateQuery, updateArgs...)
+			_, err = tx.ExecContext(ctx, updateQuery, updateArgs...)
 			if err != nil {
 				return fmt.Errorf("failed to update referrer: %w", err)
 			}
@@ -90,7 +90,7 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 			return fmt.Errorf("failed to build daily quest insert query: %w", err)
 		}
 
-		_, err = tx.Exec(questQuery, questArgs...)
+		_, err = tx.ExecContext(ctx, questQuery, questArgs...)
 		if err != nil {
 			return fmt.Errorf("failed to insert daily quest: %w", err)
 		}
@@ -124,9 +124,44 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 				return fmt.Errorf("failed to build social quests insert query: %w", err)
 			}
 
-			_, err = tx.Exec(query, args...)
+			_, err = tx.ExecContext(ctx, query, args...)
 			if err != nil {
 				return fmt.Errorf("failed to insert user social quests: %w", err)
+			}
+		}
+
+		referralQuestsQuery, referralQuestArgs, err := squirrel.
+			Select("quest_id").
+			From("referral_quests").
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build referral quests select query: %w", err)
+		}
+
+		var referralQuestIDs []uuid.UUID
+		err = tx.Select(&referralQuestIDs, referralQuestsQuery, referralQuestArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to get referral quests: %w", err)
+		}
+
+		if len(referralQuestIDs) > 0 {
+			builder := squirrel.
+				Insert("referral_quests_users").
+				Columns("user_telegram_id", "quest_id", "completed")
+
+			for _, questID := range referralQuestIDs {
+				builder = builder.Values(user.TelegramID, questID, false)
+			}
+
+			query, args, err := builder.PlaceholderFormat(squirrel.Dollar).ToSql()
+			if err != nil {
+				return fmt.Errorf("failed to build referral quests insert query: %w", err)
+			}
+
+			_, err = tx.ExecContext(ctx, query, args...)
+			if err != nil {
+				return fmt.Errorf("failed to insert user referral quests: %w", err)
 			}
 		}
 
