@@ -2,8 +2,10 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"UD_telegram_miniapp/internal/model"
 	"UD_telegram_miniapp/internal/service"
@@ -31,7 +33,6 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 		h.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
 		h.GET("/leaderboard", r.GetLeaderboard)
 		h.GET("/:telegram_id/referrals", r.GetUserReferrals)
-
 		h.GET("/:telegram_id/avatar", r.GetUserAvatar)
 	}
 }
@@ -211,6 +212,7 @@ type userReferral struct {
 	TelegramUsername string `json:"telegram_username"`
 	ReferralCount    int    `json:"referral_count"`
 	Points           int    `json:"points"`
+	AvatarProxyPath  string `json:"avatar_proxy_path"`
 }
 
 func (r *userRoutes) GetUserReferrals(c *gin.Context) {
@@ -261,7 +263,7 @@ func (r *userRoutes) GetUserAvatar(c *gin.Context) {
 		return
 	}
 
-	avatarFilePath, err := r.getUserAvatarURL(id)
+	avatarLink, err := r.prepareAvatarFileLink(id)
 	if err != nil {
 		log.Error("failed to get user avatar",
 			zap.Error(err),
@@ -270,17 +272,136 @@ func (r *userRoutes) GetUserAvatar(c *gin.Context) {
 		return
 	}
 
-	if avatarFilePath == "" {
+	if avatarLink == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no avatar found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"avatar_file_path": avatarFilePath,
-	})
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Get(avatarLink)
+	if err != nil {
+		log.Error("failed to download avatar",
+			zap.Error(err),
+			zap.String("url", avatarLink))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Error("failed to download avatar: non-200 status code",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("url", avatarLink))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "public, max-age=86400")
+
+	_, err = io.Copy(c.Writer, resp.Body)
+	if err != nil {
+		log.Error("failed to stream avatar data",
+			zap.Error(err),
+			zap.Int64("telegram_id", id))
+		return
+	}
 }
 
-func (r *userRoutes) getUserAvatarURL(userID int64) (string, error) {
+//func (r *userRoutes) GetUserAvatar(c *gin.Context) {
+//	log := logger.Logger()
+//
+//	telegramID := c.Param("telegram_id")
+//	id, err := strconv.ParseInt(telegramID, 10, 64)
+//	if err != nil {
+//		log.Error("failed to parse telegram_id", zap.Error(err))
+//		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+//		return
+//	}
+//
+//	_, err = r.us.GetUserByTelegramID(c.Request.Context(), id)
+//	if err != nil {
+//		log.Error("failed to get user", zap.Error(err))
+//		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+//		return
+//	}
+//
+//	avatarLink, err := r.prepareAvatarFileLink(id)
+//	if err != nil {
+//		log.Error("failed to get user avatar",
+//			zap.Error(err),
+//			zap.Int64("telegram_id", id))
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch avatar"})
+//		return
+//	}
+//
+//	if avatarLink == "" {
+//		c.JSON(http.StatusNotFound, gin.H{"error": "no avatar found"})
+//		return
+//	}
+//
+//	client := &http.Client{
+//		Timeout: 10 * time.Second,
+//	}
+//
+//	resp, err := client.Get(avatarLink)
+//	if err != nil {
+//		log.Error("failed to download avatar",
+//			zap.Error(err),
+//			zap.String("url", avatarLink))
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
+//		return
+//	}
+//	defer resp.Body.Close()
+//
+//	if resp.StatusCode != http.StatusOK {
+//		log.Error("failed to download avatar: non-200 status code",
+//			zap.Int("status_code", resp.StatusCode),
+//			zap.String("url", avatarLink))
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
+//		return
+//	}
+//
+//	imageBytes, err := io.ReadAll(resp.Body)
+//	if err != nil {
+//		log.Error("failed to read avatar data",
+//			zap.Error(err),
+//			zap.Int64("telegram_id", id))
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process avatar"})
+//		return
+//	}
+//
+//	//contentType := resp.Header.Get("Content-Type")
+//	contentType := http.DetectContentType(imageBytes)
+//	fmt.Println(contentType)
+//	if contentType == "" {
+//		contentType = "image/jpeg"
+//	}
+//
+//	base64Image := base64.StdEncoding.EncodeToString(imageBytes)
+//
+//	out := struct {
+//		ContentType string `json:"content_type"`
+//		Encoding    string `json:"encoding"`
+//		Data        string `json:"data"`
+//	}{
+//		ContentType: contentType,
+//		Encoding:    "base64",
+//		Data:        base64Image,
+//	}
+//
+//	c.JSON(http.StatusOK, out)
+//}
+
+func (r *userRoutes) prepareAvatarFileLink(userID int64) (string, error) {
 	bot, err := tgbotapi.NewBotAPI(r.a.GetBotToken())
 	if err != nil {
 		return "", fmt.Errorf("failed to initialize bot: %w", err)
@@ -305,5 +426,7 @@ func (r *userRoutes) getUserAvatarURL(userID int64) (string, error) {
 		return "", fmt.Errorf("failed to get file: %w", err)
 	}
 
-	return file.FilePath, nil
+	fullLink := file.Link(r.a.GetBotToken())
+
+	return fullLink, nil
 }
