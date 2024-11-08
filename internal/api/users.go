@@ -29,12 +29,12 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 	public := h.Group("")
 	public.Use(a.TelegramAuthMiddleware())
 	{
-		h.POST("/", r.RegisterUser)
-		h.GET("/:telegram_id", r.GetUserByTelegramID)
-		h.GET("/:telegram_id/waitlist", r.GetUserWaitlistStatus)
-		h.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
-		h.GET("/leaderboard", r.GetLeaderboard)
-		h.GET("/:telegram_id/referrals", r.GetUserReferrals)
+		public.POST("/", r.RegisterUser)
+		public.GET("/:telegram_id", r.GetUserByTelegramID)
+		public.GET("/:telegram_id/waitlist", r.GetUserWaitlistStatus)
+		public.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
+		public.GET("/leaderboard", r.GetLeaderboard)
+		public.GET("/:telegram_id/referrals", r.GetUserReferrals)
 	}
 
 	admin := h.Group("/admin")
