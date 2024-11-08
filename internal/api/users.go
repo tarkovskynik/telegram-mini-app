@@ -38,9 +38,8 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 }
 
 type RegisterUserRequest struct {
-	Handle     string `json:"handle"`
-	ProfileImg string `json:"profile_img"`
-	Referrer   *int64 `json:"referrer"`
+	Handle   string `json:"handle"`
+	Referrer *int64 `json:"referrer"`
 }
 
 type RegisterUserResponse struct {
@@ -77,7 +76,6 @@ func (r *userRoutes) RegisterUser(c *gin.Context) {
 		Handle:           req.Handle,
 		Username:         user.Username,
 		ReferrerID:       req.Referrer,
-		ProfileImage:     req.ProfileImg,
 		RegistrationDate: user.AuthDate,
 	}
 
@@ -94,6 +92,19 @@ func (r *userRoutes) RegisterUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, out)
+}
+
+type UserResponse struct {
+	TelegramID       int64     `json:"telegram_id"`
+	Handle           string    `json:"handle"`
+	Username         string    `json:"username"`
+	ReferrerID       *int64    `json:"referrer_id,omitempty"`
+	Referrals        int       `json:"referrals"`
+	Points           int       `json:"points"`
+	AvatarProxyPath  string    `json:"avatar_proxy_path"`
+	JoinWaitlist     *bool     `json:"join_waitlist,omitempty"`
+	RegistrationDate time.Time `json:"registration_date"`
+	AuthDate         time.Time `json:"auth_date"`
 }
 
 func (r *userRoutes) GetUserByTelegramID(c *gin.Context) {
@@ -113,19 +124,22 @@ func (r *userRoutes) GetUserByTelegramID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no user associated with the provided telegram_id"})
 		return
 	}
+	user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", user.TelegramID)
 
-	c.JSON(http.StatusOK, gin.H{
-		"telegram_id":       user.TelegramID,
-		"handle":            user.Handle,
-		"username":          user.Username,
-		"referrer_id":       user.ReferrerID,
-		"referrals":         user.Referrals,
-		"points":            user.Points,
-		"profile_image":     user.ProfileImage,
-		"join_waitlist":     user.JoinWaitlist,
-		"registration_date": user.RegistrationDate,
-		"auth_date":         user.AuthDate,
-	})
+	out := UserResponse{
+		TelegramID:       user.TelegramID,
+		Handle:           user.Handle,
+		Username:         user.Username,
+		ReferrerID:       user.ReferrerID,
+		Referrals:        user.Referrals,
+		Points:           user.Points,
+		AvatarProxyPath:  user.AvatarProxyPath,
+		JoinWaitlist:     user.JoinWaitlist,
+		RegistrationDate: user.RegistrationDate,
+		AuthDate:         user.AuthDate,
+	}
+
+	c.JSON(http.StatusOK, out)
 }
 
 func (r *userRoutes) GetUserWaitlistStatus(c *gin.Context) {
@@ -185,6 +199,13 @@ func (r *userRoutes) UpdateUserWaitlistStatus(c *gin.Context) {
 	})
 }
 
+type LeaderboardEntry struct {
+	Username        string `json:"username"`
+	AvatarProxyPath string `json:"avatar_proxy_path"`
+	Points          int    `json:"points"`
+	Referrals       int    `json:"referrals"`
+}
+
 func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 	log := logger.Logger()
 
@@ -195,17 +216,19 @@ func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 		return
 	}
 
-	var response []gin.H
-	for _, user := range users {
-		response = append(response, gin.H{
-			"username":    user.Username,
-			"points":      user.Points,
-			"profile_img": user.ProfileImage,
-			"referrals":   user.Referrals,
-		})
+	out := make([]LeaderboardEntry, len(users))
+	for i, user := range users {
+		user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", user.TelegramID)
+
+		out[i] = LeaderboardEntry{
+			Username:        user.Username,
+			AvatarProxyPath: user.AvatarProxyPath,
+			Points:          user.Points,
+			Referrals:       user.Referrals,
+		}
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, out)
 }
 
 type userReferral struct {
@@ -235,10 +258,13 @@ func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 
 	out := make([]userReferral, len(referrals))
 	for i, ref := range referrals {
+		ref.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", ref.TelegramID)
+
 		out[i] = userReferral{
 			TelegramUsername: ref.TelegramUsername,
 			ReferralCount:    ref.ReferralCount,
 			Points:           ref.Points,
+			AvatarProxyPath:  ref.AvatarProxyPath,
 		}
 	}
 

@@ -22,13 +22,13 @@ type User struct {
 	ReferrerID       *int64    `db:"referrer_id"`
 	Referrals        int       `db:"referrals"`
 	Points           int       `db:"points"`
-	ProfileImage     string    `db:"profile_image"`
 	JoinWaitlist     *bool     `db:"join_waitlist"`
 	RegistrationDate time.Time `db:"registration_date"`
 	AuthDate         time.Time `db:"last_auth_date"`
 }
 
 type userReferral struct {
+	TelegramID       int64  `db:"telegram_id"`
 	TelegramUsername string `db:"username"`
 	ReferralCount    int    `db:"referrals"`
 	Points           int    `db:"points"`
@@ -43,7 +43,6 @@ func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
 				"handle":            user.Handle,
 				"username":          user.Username,
 				"referrer_id":       user.ReferrerID,
-				"profile_image":     user.ProfileImage,
 				"registration_date": user.RegistrationDate,
 				"last_auth_date":    user.AuthDate,
 				"points":            user.Points,
@@ -196,7 +195,6 @@ func (r *Repository) GetUserByTelegramID(ctx context.Context, telegramID int64) 
 		ReferrerID:       user.ReferrerID,
 		Referrals:        user.Referrals,
 		Points:           user.Points,
-		ProfileImage:     user.ProfileImage,
 		JoinWaitlist:     user.JoinWaitlist,
 		RegistrationDate: user.RegistrationDate,
 		AuthDate:         user.AuthDate,
@@ -230,7 +228,6 @@ func (r *Repository) getUserWithTx(ctx context.Context, tx *sqlx.Tx, telegramID 
 		ReferrerID:       user.ReferrerID,
 		Referrals:        user.Referrals,
 		Points:           user.Points,
-		ProfileImage:     user.ProfileImage,
 		JoinWaitlist:     user.JoinWaitlist,
 		RegistrationDate: user.RegistrationDate,
 		AuthDate:         user.AuthDate,
@@ -369,7 +366,7 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 
 	err := r.Transaction(ctx, func(tx *sqlx.Tx) error {
 		query, args, err := squirrel.
-			Select("username", "points", "profile_image", "referrals").
+			Select("telegram_id", "username", "points", "referrals").
 			From("users").
 			OrderBy("points DESC").
 			Limit(uint64(limit)).
@@ -393,10 +390,10 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 	userList := make([]*model.User, len(users))
 	for i, user := range users {
 		userList[i] = &model.User{
-			Username:     user.Username,
-			Points:       user.Points,
-			ProfileImage: user.ProfileImage,
-			Referrals:    user.Referrals,
+			TelegramID: user.TelegramID,
+			Username:   user.Username,
+			Points:     user.Points,
+			Referrals:  user.Referrals,
 		}
 	}
 
@@ -405,6 +402,7 @@ func (r *Repository) GetTopUsers(ctx context.Context, limit int) ([]*model.User,
 
 func (r *Repository) GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error) {
 	query := squirrel.Select(
+		"telegram_id",
 		"username",
 		"referrals",
 		"points",
@@ -428,6 +426,7 @@ func (r *Repository) GetUserReferrals(ctx context.Context, telegramID int64) ([]
 	refs := make([]*model.UserReferral, len(referrals))
 	for i, ref := range referrals {
 		refs[i] = &model.UserReferral{
+			TelegramID:       ref.TelegramID,
 			TelegramUsername: ref.TelegramUsername,
 			ReferralCount:    ref.ReferralCount,
 			Points:           ref.Points,

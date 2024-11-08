@@ -9,14 +9,16 @@ type User struct {
 	ReferrerID       *int64
 	Referrals        int
 	Points           int
-	ProfileImage     string
+	AvatarProxyPath  string
 	JoinWaitlist     *bool
 	RegistrationDate time.Time
 	AuthDate         time.Time
 }
 
 type UserReferral struct {
+	TelegramID       int64
 	TelegramUsername string
+	AvatarProxyPath  string
 	ReferralCount    int
 	Points           int
 }

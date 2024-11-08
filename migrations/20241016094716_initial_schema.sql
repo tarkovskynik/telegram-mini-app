@@ -9,7 +9,6 @@ CREATE TABLE users (
                        referrer_id BIGINT REFERENCES users(telegram_id),
                        referrals INTEGER DEFAULT 0,
                        points INTEGER DEFAULT 0,
-                       profile_image VARCHAR(255),
                        join_waitlist BOOLEAN DEFAULT FALSE,
                        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                        last_auth_date TIMESTAMP

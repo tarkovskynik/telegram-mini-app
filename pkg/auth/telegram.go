@@ -2,11 +2,17 @@ package auth
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"UD_telegram_miniapp/pkg/logger"
+	"go.uber.org/zap"
+
 	"github.com/gin-gonic/gin"
+	initdata "github.com/telegram-mini-apps/init-data-golang"
 )
 
 const expTime = 24 * time.Hour
@@ -25,38 +31,38 @@ func NewTelegramAuth(botToken string, debugMode bool) *TelegramAuth {
 
 func (t *TelegramAuth) TelegramAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//log := logger.Logger()
-		//
-		//authHeader := c.GetHeader("Authorization")
-		//if authHeader == "" {
-		//	log.Info("missing authorization header")
-		//	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization header is required"})
-		//	return
-		//}
-		//
-		//if !strings.HasPrefix(authHeader, "Telegram ") {
-		//	log.Info("invalid authorization header format")
-		//	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
-		//	return
-		//}
-		//
-		//initData := strings.TrimPrefix(authHeader, "Telegram ")
-		//if !t.debugMode {
-		//	if err := initdata.Validate(initData, t.botToken, expTime); err != nil {
-		//		log.Info("invalid telegram init data", zap.Error(err))
-		//		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram auth data"})
-		//		return
-		//	}
-		//}
-		//
-		//telegramUserData, err := ExtractTelegramData(initData)
-		//if err != nil {
-		//	log.Error("failed to extract telegram data", zap.Error(err))
-		//	c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram data"})
-		//	return
-		//}
-		//
-		//c.Set("telegram_user", telegramUserData)
+		log := logger.Logger()
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			log.Info("missing authorization header")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization header is required"})
+			return
+		}
+
+		if !strings.HasPrefix(authHeader, "Telegram ") {
+			log.Info("invalid authorization header format")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
+			return
+		}
+
+		initData := strings.TrimPrefix(authHeader, "Telegram ")
+		if !t.debugMode {
+			if err := initdata.Validate(initData, t.botToken, expTime); err != nil {
+				log.Info("invalid telegram init data", zap.Error(err))
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram auth data"})
+				return
+			}
+		}
+
+		telegramUserData, err := ExtractTelegramData(initData)
+		if err != nil {
+			log.Error("failed to extract telegram data", zap.Error(err))
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid telegram data"})
+			return
+		}
+
+		c.Set("telegram_user", telegramUserData)
 		c.Next()
 	}
 }
