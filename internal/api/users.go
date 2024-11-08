@@ -25,7 +25,9 @@ type userRoutes struct {
 func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.TelegramAuth) {
 	r := &userRoutes{us: us, a: a}
 	h := handler.Group("/users")
-	h.Use(a.TelegramAuthMiddleware())
+
+	public := h.Group("")
+	public.Use(a.TelegramAuthMiddleware())
 	{
 		h.POST("/", r.RegisterUser)
 		h.GET("/:telegram_id", r.GetUserByTelegramID)
@@ -33,7 +35,11 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 		h.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
 		h.GET("/leaderboard", r.GetLeaderboard)
 		h.GET("/:telegram_id/referrals", r.GetUserReferrals)
-		h.GET("/:telegram_id/avatar", r.GetUserAvatar)
+	}
+
+	admin := h.Group("/admin")
+	{
+		admin.GET("/:telegram_id/avatar", r.GetUserAvatar)
 	}
 }
 
@@ -124,7 +130,7 @@ func (r *userRoutes) GetUserByTelegramID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no user associated with the provided telegram_id"})
 		return
 	}
-	user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", user.TelegramID)
+	user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", user.TelegramID)
 
 	out := UserResponse{
 		TelegramID:       user.TelegramID,
@@ -218,7 +224,7 @@ func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 
 	out := make([]LeaderboardEntry, len(users))
 	for i, user := range users {
-		user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", user.TelegramID)
+		user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", user.TelegramID)
 
 		out[i] = LeaderboardEntry{
 			Username:        user.Username,
@@ -258,7 +264,7 @@ func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 
 	out := make([]userReferral, len(referrals))
 	for i, ref := range referrals {
-		ref.AvatarProxyPath = fmt.Sprintf("/api/v1/users/%d/avatar", ref.TelegramID)
+		ref.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", ref.TelegramID)
 
 		out[i] = userReferral{
 			TelegramUsername: ref.TelegramUsername,
