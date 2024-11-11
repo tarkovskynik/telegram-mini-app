@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"UD_telegram_miniapp/internal/model"
@@ -23,21 +22,21 @@ type referralQuestRoutes struct {
 
 func NewReferralQuestRoutes(handler *gin.RouterGroup, qs *service.SocialQuestService, a *auth.TelegramAuth) {
 	r := &referralQuestRoutes{qs: qs, a: a}
-	h := handler.Group("/referralquests")
+	h := handler.Group("/referral-quests")
 	{
 		admin := h.Group("/admin")
 		admin.Use(a.TelegramAuthMiddleware())
 		{
-			admin.POST("/new", r.CreateReferralQuest)
+			admin.POST("", r.CreateReferralQuest)
 		}
 	}
 
 	public := h.Group("/")
 	public.Use(a.TelegramAuthMiddleware())
 	{
-		public.GET("/:telegram_id", r.GetUserQuestStatuses)
-		public.GET("/:telegram_id/:quest_id", r.GetQuestStatus)
-		public.POST("/:telegram_id/:quest_id/claim", r.ClaimQuest)
+		public.GET("/me", r.GetUserQuestStatuses)
+		public.GET("/me/:quest_id", r.GetQuestStatus)
+		public.PATCH("/me/:quest_id", r.ClaimQuest)
 	}
 }
 
@@ -91,15 +90,21 @@ type ReferralQuestStatusResponse struct {
 func (r *referralQuestRoutes) GetUserQuestStatuses(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	statuses, err := r.qs.GetUserQuestStatuses(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	statuses, err := r.qs.GetUserQuestStatuses(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Error("failed to get quest statuses", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get quest statuses"})
@@ -126,15 +131,21 @@ func (r *referralQuestRoutes) GetUserQuestStatuses(c *gin.Context) {
 func (r *referralQuestRoutes) GetQuestStatus(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	questIDStr := c.Param("quest_id")
-
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	questIDStr := c.Param("quest_id")
 
 	questID, err := uuid.Parse(questIDStr)
 	if err != nil {
@@ -143,7 +154,7 @@ func (r *referralQuestRoutes) GetQuestStatus(c *gin.Context) {
 		return
 	}
 
-	status, err := r.qs.GetReferralQuestStatus(c.Request.Context(), id, questID)
+	status, err := r.qs.GetReferralQuestStatus(c.Request.Context(), u.ID, questID)
 	if err != nil {
 		log.Error("failed to get quest status", zap.Error(err))
 		if errors.Is(err, service.ErrQuestNotFound) {
@@ -171,16 +182,7 @@ func (r *referralQuestRoutes) GetQuestStatus(c *gin.Context) {
 func (r *referralQuestRoutes) ClaimQuest(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
 	questIDStr := c.Param("quest_id")
-
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
-		return
-	}
-
 	questID, err := uuid.Parse(questIDStr)
 	if err != nil {
 		log.Error("failed to parse quest_id", zap.Error(err))
@@ -188,7 +190,21 @@ func (r *referralQuestRoutes) ClaimQuest(c *gin.Context) {
 		return
 	}
 
-	if err := r.qs.ClaimReferralQuest(c.Request.Context(), id, questID); err != nil {
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if err := r.qs.ClaimReferralQuest(c.Request.Context(), u.ID, questID); err != nil {
 		log.Error("failed to claim quest", zap.Error(err))
 		switch {
 		case errors.Is(err, service.ErrQuestNotFound):

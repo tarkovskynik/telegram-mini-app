@@ -1,6 +1,9 @@
 package api
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,18 +32,25 @@ func NewUserRoutes(handler *gin.RouterGroup, us service.UserServiceI, a *auth.Te
 	public := h.Group("")
 	public.Use(a.TelegramAuthMiddleware())
 	{
-		public.POST("/", r.RegisterUser)
-		public.GET("/:telegram_id", r.GetUserByTelegramID)
-		public.GET("/:telegram_id/waitlist", r.GetUserWaitlistStatus)
-		public.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
+		public.POST("", r.RegisterUser)
+		public.GET("/me", r.GetOwnProfile)
 		public.GET("/leaderboard", r.GetLeaderboard)
-		public.GET("/:telegram_id/referrals", r.GetUserReferrals)
+		public.GET("/me/referrals", r.GetUserReferrals)
+	}
+
+	avatars := h.Group("")
+	{
+		avatars.GET("/:requesting_user_id/avatar/:target_user_id/:timestamp/:hash",
+			VerifyAvatarURLMiddleware(),
+			r.GetUserAvatar)
 	}
 
 	admin := h.Group("/admin")
 	{
-		admin.GET("/:telegram_id/avatar", r.GetUserAvatar)
+		admin.GET("/:telegram_id/waitlist", r.GetUserWaitlistStatus)
+		admin.PATCH("/:telegram_id/waitlist", r.UpdateUserWaitlistStatus)
 	}
+
 }
 
 type RegisterUserRequest struct {
@@ -113,24 +123,30 @@ type UserResponse struct {
 	AuthDate         time.Time `json:"auth_date"`
 }
 
-func (r *userRoutes) GetUserByTelegramID(c *gin.Context) {
+func (r *userRoutes) GetOwnProfile(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	user, err := r.us.GetUserByTelegramID(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	user, err := r.us.GetUserByTelegramID(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Error("failed to get user", zap.Error(err))
 		c.JSON(http.StatusNotFound, gin.H{"error": "no user associated with the provided telegram_id"})
 		return
 	}
-	user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", user.TelegramID)
+	user.AvatarProxyPath = GenerateAvatarURL(u.ID, u.ID)
 
 	out := UserResponse{
 		TelegramID:       user.TelegramID,
@@ -247,15 +263,21 @@ type userReferral struct {
 func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	referrals, err := r.us.GetUserReferrals(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	referrals, err := r.us.GetUserReferrals(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Error("failed to get user referrals", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user referrals"})
@@ -280,26 +302,20 @@ func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 func (r *userRoutes) GetUserAvatar(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
-		return
-	}
+	targetID := c.MustGet("target_user_id").(int64)
 
-	_, err = r.us.GetUserByTelegramID(c.Request.Context(), id)
+	_, err := r.us.GetUserByTelegramID(c.Request.Context(), targetID)
 	if err != nil {
 		log.Error("failed to get user", zap.Error(err))
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
-	avatarLink, err := r.prepareAvatarFileLink(id)
+	avatarLink, err := r.prepareAvatarFileLink(targetID)
 	if err != nil {
 		log.Error("failed to get user avatar",
 			zap.Error(err),
-			zap.Int64("telegram_id", id))
+			zap.Int64("telegram_id", targetID))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch avatar"})
 		return
 	}
@@ -343,95 +359,10 @@ func (r *userRoutes) GetUserAvatar(c *gin.Context) {
 	if err != nil {
 		log.Error("failed to stream avatar data",
 			zap.Error(err),
-			zap.Int64("telegram_id", id))
+			zap.Int64("telegram_id", targetID))
 		return
 	}
 }
-
-//func (r *userRoutes) GetUserAvatar(c *gin.Context) {
-//	log := logger.Logger()
-//
-//	telegramID := c.Param("telegram_id")
-//	id, err := strconv.ParseInt(telegramID, 10, 64)
-//	if err != nil {
-//		log.Error("failed to parse telegram_id", zap.Error(err))
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
-//		return
-//	}
-//
-//	_, err = r.us.GetUserByTelegramID(c.Request.Context(), id)
-//	if err != nil {
-//		log.Error("failed to get user", zap.Error(err))
-//		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-//		return
-//	}
-//
-//	avatarLink, err := r.prepareAvatarFileLink(id)
-//	if err != nil {
-//		log.Error("failed to get user avatar",
-//			zap.Error(err),
-//			zap.Int64("telegram_id", id))
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch avatar"})
-//		return
-//	}
-//
-//	if avatarLink == "" {
-//		c.JSON(http.StatusNotFound, gin.H{"error": "no avatar found"})
-//		return
-//	}
-//
-//	client := &http.Client{
-//		Timeout: 10 * time.Second,
-//	}
-//
-//	resp, err := client.Get(avatarLink)
-//	if err != nil {
-//		log.Error("failed to download avatar",
-//			zap.Error(err),
-//			zap.String("url", avatarLink))
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
-//		return
-//	}
-//	defer resp.Body.Close()
-//
-//	if resp.StatusCode != http.StatusOK {
-//		log.Error("failed to download avatar: non-200 status code",
-//			zap.Int("status_code", resp.StatusCode),
-//			zap.String("url", avatarLink))
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to download avatar"})
-//		return
-//	}
-//
-//	imageBytes, err := io.ReadAll(resp.Body)
-//	if err != nil {
-//		log.Error("failed to read avatar data",
-//			zap.Error(err),
-//			zap.Int64("telegram_id", id))
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process avatar"})
-//		return
-//	}
-//
-//	//contentType := resp.Header.Get("Content-Type")
-//	contentType := http.DetectContentType(imageBytes)
-//	fmt.Println(contentType)
-//	if contentType == "" {
-//		contentType = "image/jpeg"
-//	}
-//
-//	base64Image := base64.StdEncoding.EncodeToString(imageBytes)
-//
-//	out := struct {
-//		ContentType string `json:"content_type"`
-//		Encoding    string `json:"encoding"`
-//		Data        string `json:"data"`
-//	}{
-//		ContentType: contentType,
-//		Encoding:    "base64",
-//		Data:        base64Image,
-//	}
-//
-//	c.JSON(http.StatusOK, out)
-//}
 
 func (r *userRoutes) prepareAvatarFileLink(userID int64) (string, error) {
 	bot, err := tgbotapi.NewBotAPI(r.a.GetBotToken())
@@ -461,4 +392,76 @@ func (r *userRoutes) prepareAvatarFileLink(userID int64) (string, error) {
 	fullLink := file.Link(r.a.GetBotToken())
 
 	return fullLink, nil
+}
+
+func VerifyAvatarURLMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		log := logger.Logger()
+
+		requestingUserID := c.Param("requesting_user_id")
+		reqID, err := strconv.ParseInt(requestingUserID, 10, 64)
+		if err != nil {
+			log.Error("failed to parse requesting_user_id", zap.Error(err))
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid requesting_user_id"})
+			return
+		}
+
+		targetUserID := c.Param("target_user_id")
+		targetID, err := strconv.ParseInt(targetUserID, 10, 64)
+		if err != nil {
+			log.Error("failed to parse target_user_id", zap.Error(err))
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid target_user_id"})
+			return
+		}
+
+		timestamp := c.Param("timestamp")
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			log.Error("failed to parse timestamp", zap.Error(err))
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid timestamp"})
+			return
+		}
+
+		hash := c.Param("hash")
+
+		if !VerifyAvatarURL(reqID, targetID, ts, hash) {
+			log.Error("invalid avatar URL signature",
+				zap.Int64("requesting_user", reqID),
+				zap.Int64("target_user", targetID))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+			return
+		}
+
+		c.Set("requesting_user_id", reqID)
+		c.Set("target_user_id", targetID)
+
+		c.Next()
+	}
+}
+
+var secretKey = "secret"
+
+func VerifyAvatarURL(requestingUserID, targetUserID int64, timestamp int64, receivedHash string) bool {
+	dataToHash := fmt.Sprintf("%d:%d:%d", requestingUserID, targetUserID, timestamp)
+
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write([]byte(dataToHash))
+	expectedHash := hex.EncodeToString(h.Sum(nil))
+
+	return receivedHash == expectedHash
+}
+
+func GenerateAvatarURL(requestingUserID, targetUserID int64) string {
+	timestamp := time.Now().Unix()
+	dataToHash := fmt.Sprintf("%d:%d:%d", requestingUserID, targetUserID, timestamp)
+
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write([]byte(dataToHash))
+	hash := hex.EncodeToString(h.Sum(nil))
+
+	return fmt.Sprintf("/api/v1/users/%d/avatar/%d/%d/%s",
+		requestingUserID,
+		targetUserID,
+		timestamp,
+		hash)
 }

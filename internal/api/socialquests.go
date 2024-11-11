@@ -11,6 +11,7 @@ import (
 	"UD_telegram_miniapp/internal/repository"
 	"UD_telegram_miniapp/internal/service"
 	"UD_telegram_miniapp/pkg/auth"
+	"UD_telegram_miniapp/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,23 +25,23 @@ type socialQuestRoutes struct {
 func NewSocialQuestRoutes(handler *gin.RouterGroup, qs *service.SocialQuestService, a *auth.TelegramAuth) {
 	h := &socialQuestRoutes{qs: qs, a: a}
 
-	quests := handler.Group("/socialquests")
+	quests := handler.Group("/social-quests")
 	{
 		public := quests.Group("/")
 		public.Use(a.TelegramAuthMiddleware())
 		{
-			public.GET("/:telegram_id", h.GetUserQuests)
-			public.GET("/:telegram_id/:social_quest_id", h.GetQuestByID)
-			public.POST("/:telegram_id/:social_quest_id", h.ClaimQuest)
+			public.GET("/me", h.GetUserQuests)
+			public.GET("/me/:social_quest_id", h.GetQuestByID)
+			public.PATCH("/me/:social_quest_id", h.ClaimQuest)
 		}
 
 		admin := quests.Group("/admin")
 		admin.Use(a.TelegramAuthMiddleware())
 		{
-			admin.POST("/new", h.CreateSocialQuest)
-			admin.POST("/validations/new", h.CreateValidationKind)
+			admin.POST("", h.CreateSocialQuest)
+			admin.POST("/validations", h.CreateValidationKind)
 			admin.GET("/validations", h.ListValidationKinds)
-			admin.POST("/validations/:quest_id/:validation_id", h.AddQuestValidation)
+			admin.PATCH("/validations/:quest_id/:validation_id", h.AddQuestValidation)
 			admin.DELETE("/validations/:quest_id/:validation_id", h.RemoveQuestValidation)
 		}
 	}
@@ -73,14 +74,23 @@ type QuestValidation struct {
 }
 
 func (h *socialQuestRoutes) GetUserQuests(c *gin.Context) {
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	log := logger.Logger()
+
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	quests, userQuests, validationStatus, err := h.qs.GetUserQuests(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	quests, userQuests, validationStatus, err := h.qs.GetUserQuests(c.Request.Context(), u.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "telegram_id not found"})
@@ -161,14 +171,23 @@ func (h *socialQuestRoutes) GetUserQuests(c *gin.Context) {
 }
 
 func (h *socialQuestRoutes) GetQuestByID(c *gin.Context) {
-	telegramID := c.Param("telegram_id")
-	questIDStr := c.Param("social_quest_id")
+	log := logger.Logger()
 
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	questIDStr := c.Param("social_quest_id")
 
 	questID, err := uuid.Parse(questIDStr)
 	if err != nil {
@@ -176,7 +195,7 @@ func (h *socialQuestRoutes) GetQuestByID(c *gin.Context) {
 		return
 	}
 
-	quest, userQuest, validationStatus, err := h.qs.GetQuestByID(c.Request.Context(), id, questID)
+	quest, userQuest, validationStatus, err := h.qs.GetQuestByID(c.Request.Context(), u.ID, questID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrQuestNotFound):
@@ -250,14 +269,23 @@ func (h *socialQuestRoutes) GetQuestByID(c *gin.Context) {
 }
 
 func (h *socialQuestRoutes) ClaimQuest(c *gin.Context) {
-	telegramID := c.Param("telegram_id")
-	questIDStr := c.Param("social_quest_id")
+	log := logger.Logger()
 
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	questIDStr := c.Param("social_quest_id")
 
 	questID, err := uuid.Parse(questIDStr)
 	if err != nil {
@@ -265,7 +293,7 @@ func (h *socialQuestRoutes) ClaimQuest(c *gin.Context) {
 		return
 	}
 
-	err = h.qs.ClaimQuest(c.Request.Context(), id, questID)
+	err = h.qs.ClaimQuest(c.Request.Context(), u.ID, questID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrQuestNotFound):

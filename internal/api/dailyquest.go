@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"UD_telegram_miniapp/internal/service"
@@ -21,11 +20,11 @@ type dailyQuestRoutes struct {
 
 func NewDailyQuestRoutes(handler *gin.RouterGroup, ds service.DailyQuestServiceI, a *auth.TelegramAuth) {
 	r := &dailyQuestRoutes{ds: ds, a: a}
-	h := handler.Group("/dailyquest")
+	h := handler.Group("/daily-quests")
 	h.Use(a.TelegramAuthMiddleware())
 	{
-		h.GET("/:telegram_id", r.GetDailyQuestStatus)
-		h.POST("/:telegram_id", r.ClaimDailyQuest)
+		h.GET("/me", r.GetDailyQuestStatus)
+		h.PUT("/me", r.ClaimDailyQuest)
 	}
 }
 
@@ -47,15 +46,21 @@ type DailyQuestStatusResponse struct {
 func (r *dailyQuestRoutes) GetDailyQuestStatus(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	status, err := r.ds.GetStatus(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	status, err := r.ds.GetStatus(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Error("failed to get daily quest status", zap.Error(err))
 		if errors.Is(err, service.ErrUserNotFound) {
@@ -95,15 +100,21 @@ func (r *dailyQuestRoutes) GetDailyQuestStatus(c *gin.Context) {
 func (r *dailyQuestRoutes) ClaimDailyQuest(c *gin.Context) {
 	log := logger.Logger()
 
-	telegramID := c.Param("telegram_id")
-	id, err := strconv.ParseInt(telegramID, 10, 64)
-	if err != nil {
-		log.Error("failed to parse telegram_id", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 
-	err = r.ds.Claim(c.Request.Context(), id)
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	err := r.ds.Claim(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Error("failed to claim daily quest", zap.Error(err))
 		switch {
