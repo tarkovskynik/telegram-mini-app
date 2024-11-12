@@ -231,6 +231,20 @@ type LeaderboardEntry struct {
 func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 	log := logger.Logger()
 
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
 	users, err := r.us.GetLeaderboard(c.Request.Context())
 	if err != nil {
 		log.Error("failed to get leaderboard", zap.Error(err))
@@ -240,7 +254,7 @@ func (r *userRoutes) GetLeaderboard(c *gin.Context) {
 
 	out := make([]LeaderboardEntry, len(users))
 	for i, user := range users {
-		user.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", user.TelegramID)
+		user.AvatarProxyPath = GenerateAvatarURL(u.ID, user.TelegramID)
 
 		out[i] = LeaderboardEntry{
 			Username:        user.Username,
@@ -286,7 +300,7 @@ func (r *userRoutes) GetUserReferrals(c *gin.Context) {
 
 	out := make([]userReferral, len(referrals))
 	for i, ref := range referrals {
-		ref.AvatarProxyPath = fmt.Sprintf("/api/v1/users/admin/%d/avatar", ref.TelegramID)
+		ref.AvatarProxyPath = GenerateAvatarURL(u.ID, ref.TelegramID)
 
 		out[i] = userReferral{
 			TelegramUsername: ref.TelegramUsername,
