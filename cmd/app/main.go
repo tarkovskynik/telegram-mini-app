@@ -67,6 +67,9 @@ func main() {
 	api.NewSocialQuestRoutes(a, socialQuestService, telegramAuth)
 	api.NewReferralQuestRoutes(a, socialQuestService, telegramAuth)
 
+	//game
+	api.NewGameRoutes(a, repo, telegramAuth)
+
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	zapLogger.Info("Starting server", zap.String("addr", addr))
 	if err := router.Run(addr); err != nil {

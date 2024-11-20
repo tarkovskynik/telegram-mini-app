@@ -435,3 +435,111 @@ func (r *Repository) GetUserReferrals(ctx context.Context, telegramID int64) ([]
 
 	return refs, nil
 }
+
+// game
+func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error) {
+	// First try to get player's total energy
+	query, args, err := squirrel.
+		Select("p.total_energy").
+		From("players p").
+		Where(squirrel.Eq{"p.user_id": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	err = r.db.GetContext(ctx, &total, query, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			const defaultTotalEnergy = 3
+			const defaultCooldownSettingID = 1
+
+			insertQuery, insertArgs, err := squirrel.
+				Insert("players").
+				Columns("user_id", "total_energy", "cooldown_setting_id").
+				Values(playerID, defaultTotalEnergy, defaultCooldownSettingID).
+				Suffix("RETURNING total_energy").
+				PlaceholderFormat(squirrel.Dollar).
+				ToSql()
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to build insert query: %w", err)
+			}
+
+			err = r.db.GetContext(ctx, &total, insertQuery, insertArgs...)
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to create new player: %w", err)
+			}
+			remaining = total // New player has all energy available
+			return total, remaining, nil
+		}
+		return 0, 0, fmt.Errorf("failed to get player total energy: %w", err)
+	}
+
+	// Get count of energy uses still on cooldown
+	cooldownQuery, cooldownArgs, err := squirrel.
+		Select("COUNT(eu.energy_number)").
+		From("energy_uses eu").
+		Join("players p ON p.user_id = eu.user_id").
+		Join("cooldown_settings cs ON cs.id = p.cooldown_setting_id").
+		Where(squirrel.And{
+			squirrel.Eq{"eu.user_id": playerID},
+			squirrel.Expr("eu.used_at > NOW() - (cs.cooldown_hours || ' hours')::interval"),
+		}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to build cooldown query: %w", err)
+	}
+
+	var usedEnergy int
+	err = r.db.GetContext(ctx, &usedEnergy, cooldownQuery, cooldownArgs...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get energy uses count: %w", err)
+	}
+
+	remaining = total - usedEnergy
+	return total, remaining, nil
+}
+
+func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error {
+	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
+		query, args, err := squirrel.
+			Select("COUNT(*)").
+			From("energy_uses eu").
+			Where(squirrel.And{
+				squirrel.Eq{"eu.user_id": userID},
+				squirrel.Expr("eu.used_at > NOW() - make_interval(hours => cs.cooldown_hours)"),
+			}).
+			Join("players p ON p.user_id = eu.user_id").
+			Join("cooldown_settings cs ON cs.id = p.cooldown_setting_id").
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build used energy query: %w", err)
+		}
+
+		var usedEnergy int
+		err = tx.GetContext(ctx, &usedEnergy, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to get used energy count: %w", err)
+		}
+
+		insertQuery, insertArgs, err := squirrel.
+			Insert("energy_uses").
+			Columns("user_id", "energy_number", "used_at").
+			Values(userID, usedEnergy+1, squirrel.Expr("NOW()")).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("failed to build insert query: %w", err)
+		}
+
+		_, err = tx.ExecContext(ctx, insertQuery, insertArgs...)
+		if err != nil {
+			return fmt.Errorf("failed to record energy use: %w", err)
+		}
+
+		return nil
+	})
+}

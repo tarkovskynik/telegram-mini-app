@@ -103,6 +103,26 @@ CREATE TABLE referral_quests_users (
 );
 
 CREATE INDEX idx_referral_quests_users_completed ON referral_quests_users(completed);
+
+CREATE TABLE cooldown_settings (
+                                   id INTEGER PRIMARY KEY,
+                                   cooldown_hours INTEGER NOT NULL
+);
+INSERT INTO cooldown_settings (id, cooldown_hours) VALUES (1, 8);
+
+CREATE TABLE players (
+                         user_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
+                         total_energy INTEGER NOT NULL,
+                         cooldown_setting_id INTEGER NOT NULL REFERENCES cooldown_settings(id)
+);
+
+CREATE TABLE energy_uses (
+                             user_id BIGINT,
+                             energy_number INTEGER,
+                             used_at TIMESTAMP,
+                             PRIMARY KEY (user_id, energy_number),
+                             FOREIGN KEY (user_id) REFERENCES players(user_id)
+);
 -- +goose StatementEnd
 
 -- +goose Down
@@ -118,4 +138,9 @@ DROP TABLE IF EXISTS referral_quests;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS action_types;
 DROP TABLE IF EXISTS quest_types;
+
+DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS cooldown_settings;
+DROP TABLE IF EXISTS energy_uses;
+
 -- +goose StatementEnd

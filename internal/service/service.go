@@ -54,6 +54,9 @@ type UserRepository interface {
 	GetUserWaitlistStatus(ctx context.Context, telegramID int64) (*bool, error)
 	GetTopUsers(ctx context.Context, limit int) ([]*model.User, error)
 	GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error)
+	//game
+	GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error)
+	UpdatePlayerEnergy(ctx context.Context, userID int64) error
 }
 
 type DailyQuestServiceI interface {
