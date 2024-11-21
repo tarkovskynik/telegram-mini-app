@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"UD_telegram_miniapp/internal/model"
+	"UD_telegram_miniapp/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -542,4 +544,42 @@ func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error
 
 		return nil
 	})
+}
+
+func (r *Repository) ResetEnergy(ctx context.Context, userID int64) error {
+	log := logger.Logger()
+
+	query, args, err := squirrel.
+		Delete("energy_uses").
+		Where(squirrel.Eq{"user_id": userID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		log.Error("failed to build reset energy query",
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return fmt.Errorf("failed to build reset energy query: %w", err)
+	}
+
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Error("failed to execute reset energy query",
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return fmt.Errorf("failed to reset user energy: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		log.Error("failed to get affected rows count",
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	log.Info("successfully reset user energy",
+		zap.Int64("user_id", userID),
+		zap.Int64("records_deleted", rows))
+
+	return nil
 }

@@ -57,6 +57,7 @@ type UserRepository interface {
 	//game
 	GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error)
 	UpdatePlayerEnergy(ctx context.Context, userID int64) error
+	ResetEnergy(ctx context.Context, userID int64) error
 }
 
 type DailyQuestServiceI interface {

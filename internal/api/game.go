@@ -66,6 +66,10 @@ func NewGameRoutes(handler *gin.RouterGroup, repo service.UserRepository, a *aut
 	h := handler.Group("/ws")
 
 	h.GET("/:telegram_id", r.handleWebSocket)
+
+	//admin
+	admin := handler.Group("/admin")
+	admin.DELETE("/:telegram_id/reset-energy", r.ResetEnergy)
 }
 
 func (gr *ballGameRoutes) handleWebSocket(c *gin.Context) {
@@ -289,4 +293,36 @@ func (gr *ballGameRoutes) handleGameOver(game *Game) {
 			zap.Int64("player_id", game.PlayerID),
 			zap.Error(err))
 	}
+}
+
+func (gr *ballGameRoutes) ResetEnergy(c *gin.Context) {
+	log := logger.Logger()
+
+	telegramID := c.Param("telegram_id")
+	id, err := strconv.ParseInt(telegramID, 10, 64)
+	if err != nil {
+		log.Error("failed to parse telegram_id", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid telegram_id"})
+		return
+	}
+
+	err = gr.repo.ResetEnergy(c.Request.Context(), id)
+	if err != nil {
+		log.Error("failed to reset energy",
+			zap.Int64("telegram_id", id),
+			zap.Error(err))
+
+		if errors.Is(err, service.ErrUserNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset energy"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "energy reset successful",
+		"telegram_id": id,
+	})
 }
