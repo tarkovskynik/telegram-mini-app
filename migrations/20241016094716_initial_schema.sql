@@ -104,6 +104,8 @@ CREATE TABLE referral_quests_users (
 
 CREATE INDEX idx_referral_quests_users_completed ON referral_quests_users(completed);
 
+
+-- game
 CREATE TABLE cooldown_settings (
                                    id INTEGER PRIMARY KEY,
                                    cooldown_hours INTEGER NOT NULL
@@ -122,6 +124,13 @@ CREATE TABLE energy_uses (
                              used_at TIMESTAMP,
                              PRIMARY KEY (user_id, energy_number),
                              FOREIGN KEY (user_id) REFERENCES players(user_id)
+);
+
+
+-- farm game
+CREATE TABLE farm_game (
+                           player bigint PRIMARY KEY,
+                           last_harvested_at TIMESTAMP
 );
 -- +goose StatementEnd
 
@@ -143,4 +152,5 @@ DROP TABLE IF EXISTS players;
 DROP TABLE IF EXISTS cooldown_settings;
 DROP TABLE IF EXISTS energy_uses;
 
+DROP TABLE IF EXISTS farm_game;
 -- +goose StatementEnd

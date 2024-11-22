@@ -70,6 +70,9 @@ func main() {
 	//game
 	api.NewGameRoutes(a, repo, telegramAuth)
 
+	//farm game
+	api.NewFarmGameRoutes(a, repo, telegramAuth)
+
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	zapLogger.Info("Starting server", zap.String("addr", addr))
 	if err := router.Run(addr); err != nil {
