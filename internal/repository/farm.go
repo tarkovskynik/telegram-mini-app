@@ -31,12 +31,12 @@ func (r *Repository) Status(player int64) (FarmStatus, error) {
 		return status, err
 	}
 
-	if !lastHarvestedAt.Valid || time.Since(lastHarvestedAt.Time) >= CooldownDuration {
+	if !lastHarvestedAt.Valid || time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()) >= CooldownDuration {
 		status.CanHarvest = true
 		status.TimeUntilHarvest = 0
 	} else {
 		status.CanHarvest = false
-		status.TimeUntilHarvest = CooldownDuration.Seconds() - time.Since(lastHarvestedAt.Time).Seconds()
+		status.TimeUntilHarvest = CooldownDuration.Seconds() - time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()).Seconds()
 	}
 
 	return status, nil
@@ -67,7 +67,7 @@ func (r *Repository) Harvest(player int64) error {
 	} else if err != nil {
 		return err
 	} else {
-		if lastHarvestedAt.Valid && time.Since(lastHarvestedAt.Time) < CooldownDuration {
+		if lastHarvestedAt.Valid && time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()) < CooldownDuration {
 			return errors.New("cooldown period not finished")
 		}
 
