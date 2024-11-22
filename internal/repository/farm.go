@@ -58,11 +58,12 @@ func (r *Repository) Harvest(player int64) error {
 		player,
 	).Scan(&lastHarvestedAt)
 
+	now := time.Now().UTC()
 	if err == sql.ErrNoRows {
 		_, err = tx.Exec(`
             INSERT INTO farm_game (player, last_harvested_at) 
-            VALUES ($1, NOW())`,
-			player,
+            VALUES ($1, $2)`,
+			player, now,
 		)
 	} else if err != nil {
 		return err
@@ -73,9 +74,9 @@ func (r *Repository) Harvest(player int64) error {
 
 		_, err = tx.Exec(`
             UPDATE farm_game 
-            SET last_harvested_at = NOW() 
-            WHERE player = $1`,
-			player,
+            SET last_harvested_at = $1 
+            WHERE player = $2`,
+			now, player,
 		)
 	}
 	if err != nil {
