@@ -21,7 +21,7 @@ func NewFarmGameRoutes(handler *gin.RouterGroup, repo *repository.Repository, a 
 	h := handler.Group("/farm")
 	h.Use(a.TelegramAuthMiddleware())
 
-	h.POST("/harvest", r.harvest)
+	h.POST("/harvest", r.startHarvest)
 	h.GET("/status", r.status)
 }
 
@@ -37,7 +37,7 @@ type HarvestResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-func (r *farmGameRoutes) harvest(c *gin.Context) {
+func (r *farmGameRoutes) startHarvest(c *gin.Context) {
 	log := logger.Logger()
 
 	userData, exists := c.Get("telegram_user")
@@ -54,28 +54,19 @@ func (r *farmGameRoutes) harvest(c *gin.Context) {
 		return
 	}
 
-	err := r.repo.Harvest(u.ID)
+	err := r.repo.StartHarvest(u.ID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, HarvestResponse{
-			Success: false,
-			Error:   err.Error(),
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   err.Error(),
 		})
 		return
 	}
 
-	user, err := r.repo.GetUserByTelegramID(context.TODO(), u.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, HarvestResponse{
-			Success: false,
-			Error:   "Failed to get updated points",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, HarvestResponse{
-		Success: true,
-		Points:  user.Points,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
 	})
+
 }
 
 func (r *farmGameRoutes) status(c *gin.Context) {

@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"UD_telegram_miniapp/pkg/logger"
 
@@ -24,7 +26,9 @@ var (
 )
 
 type Repository struct {
-	db *sqlx.DB
+	db    *sqlx.DB
+	Cache map[int64]time.Time
+	sync.Mutex
 }
 
 func (r *Repository) Close() error {
@@ -69,8 +73,10 @@ func New(cfg Config) (*Repository, error) {
 
 	logger.Logger().Info("Connected to database successfully")
 
+	cache := make(map[int64]time.Time)
 	return &Repository{
-		db: db,
+		db:    db,
+		Cache: cache,
 	}, nil
 }
 

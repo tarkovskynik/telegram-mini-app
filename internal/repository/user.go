@@ -190,6 +190,12 @@ func (r *Repository) GetUserByTelegramID(ctx context.Context, telegramID int64) 
 		return nil, err
 	}
 
+	harvestedPoints, err := r.GetHarvestPoints(telegramID)
+	if err != nil {
+		return nil, err
+	}
+	user.Points += harvestedPoints
+
 	return &model.User{
 		TelegramID:       user.TelegramID,
 		Handle:           user.Handle,
@@ -440,7 +446,6 @@ func (r *Repository) GetUserReferrals(ctx context.Context, telegramID int64) ([]
 
 // game
 func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error) {
-	// First try to get player's total energy
 	query, args, err := squirrel.
 		Select("p.total_energy").
 		From("players p").
@@ -472,13 +477,12 @@ func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total
 			if err != nil {
 				return 0, 0, fmt.Errorf("failed to create new player: %w", err)
 			}
-			remaining = total // New player has all energy available
+			remaining = total
 			return total, remaining, nil
 		}
 		return 0, 0, fmt.Errorf("failed to get player total energy: %w", err)
 	}
 
-	// Get count of energy uses still on cooldown
 	cooldownQuery, cooldownArgs, err := squirrel.
 		Select("COUNT(eu.energy_number)").
 		From("energy_uses eu").
