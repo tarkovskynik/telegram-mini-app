@@ -214,6 +214,23 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 			if err != nil {
 				log.Println("failed to reset energy", zap.Error(err))
 			}
+
+			out := Message{
+				Type: "energy_recharge",
+				Payload: map[string]interface{}{
+					"energy_recharge_status": "success",
+				},
+			}
+
+			outJson, err := json.MarshalIndent(out, "", "	")
+			if err != nil {
+				log.Println("failed to marshal json", zap.Error(err))
+			}
+
+			err = game.conn.WriteMessage(websocket.TextMessage, outJson)
+			if err != nil {
+				log.Println("failed to write message", zap.Error(err))
+			}
 		}
 	}
 }
