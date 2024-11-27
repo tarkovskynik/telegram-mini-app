@@ -98,6 +98,15 @@ func (r *farmGameRoutes) status(c *gin.Context) {
 		return
 	}
 
+	_, exist := r.repo.Cache[u.ID]
+	if !exist {
+		c.JSON(http.StatusOK, StatusResponse{
+			CanHarvest:       status.CanHarvest,
+			TimeUntilHarvest: status.TimeUntilHarvest,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, StatusResponse{
 		CanHarvest:       status.CanHarvest,
 		TimeUntilHarvest: status.TimeUntilHarvest,

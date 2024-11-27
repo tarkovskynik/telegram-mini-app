@@ -210,11 +210,6 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 			}
 
 		case "energy_recharge":
-			err := gr.repo.ResetEnergy(context.TODO(), game.PlayerID)
-			if err != nil {
-				log.Println("failed to reset energy", zap.Error(err))
-			}
-
 			out := Message{
 				Type: "energy_recharge",
 				Payload: map[string]interface{}{
