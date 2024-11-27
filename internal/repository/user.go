@@ -535,6 +535,7 @@ func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error
 			Insert("energy_uses").
 			Columns("user_id", "energy_number", "used_at").
 			Values(userID, usedEnergy+1, squirrel.Expr("NOW()")).
+			Suffix(`ON CONFLICT (user_id, energy_number) DO UPDATE SET used_at = NOW()`).
 			PlaceholderFormat(squirrel.Dollar).
 			ToSql()
 		if err != nil {
