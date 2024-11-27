@@ -508,6 +508,35 @@ func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total
 	return total, remaining, nil
 }
 
+func (r *Repository) GetEnergyStatus(ctx context.Context, playerID int64) (energyNumb int, usedAt time.Time, err error) {
+	query, args, err := squirrel.
+		Select("energy_number", "used_at").
+		From("energy_uses").
+		Where(squirrel.And{
+			squirrel.Eq{"user_id": playerID},
+		}).
+		PlaceholderFormat(squirrel.Dollar).
+		OrderBy("used_at DESC").
+		Limit(1).
+		ToSql()
+
+	if err != nil {
+		return -1, time.Time{}, fmt.Errorf("failed to build energy status query: %w", err)
+	}
+
+	status := struct {
+		EnergyNumb int       `db:"energy_number"`
+		UsedAt     time.Time `db:"used_at"`
+	}{}
+
+	err = r.db.GetContext(ctx, &status, query, args...)
+	if err != nil {
+		return -1, time.Time{}, fmt.Errorf("failed to get energy status: %w", err)
+	}
+
+	return status.EnergyNumb, status.UsedAt, nil
+}
+
 func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error {
 	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
 		query, args, err := squirrel.

@@ -53,7 +53,9 @@ func main() {
 
 	appFirstStart := false
 	gameStarted := false
+	energyCount := 3
 	hitCount := 0
+	cyclesToResetEnergy := 1
 	ticker := time.NewTicker(5 * time.Second)
 
 	for range ticker.C {
@@ -62,6 +64,17 @@ func main() {
 			messageQueue <- Message{Type: "player_state"}
 
 		} else if !gameStarted {
+			if cyclesToResetEnergy <= 0 {
+				messageQueue <- Message{Type: "energy_recharge"}
+				cyclesToResetEnergy = 1
+				energyCount = 3
+				continue
+			}
+
+			if energyCount <= 0 {
+				cyclesToResetEnergy--
+			}
+
 			messageQueue <- Message{Type: "game_start"}
 			gameStarted = true
 
@@ -73,6 +86,7 @@ func main() {
 				messageQueue <- Message{Type: "ball_dropped"}
 				gameStarted = false
 				hitCount = 0
+				energyCount--
 
 				time.Sleep(1 * time.Second)
 			}

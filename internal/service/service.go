@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"UD_telegram_miniapp/internal/model"
 
@@ -56,6 +57,7 @@ type UserRepository interface {
 	GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error)
 	//game
 	GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error)
+	GetEnergyStatus(ctx context.Context, playerID int64) (energyNumb int, usedAt time.Time, err error)
 	UpdatePlayerEnergy(ctx context.Context, userID int64) error
 	ResetEnergy(ctx context.Context, userID int64) error
 }

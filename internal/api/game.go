@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"UD_telegram_miniapp/internal/repository"
 	"UD_telegram_miniapp/internal/service"
@@ -89,7 +90,7 @@ func (gr *ballGameRoutes) handleWebSocket(c *gin.Context) {
 	game := &Game{
 		PlayerID:      userID,
 		IsPlaying:     false,
-		IsReadyToPlay: true,
+		IsReadyToPlay: false,
 		conn:          conn,
 	}
 
@@ -135,6 +136,8 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 			if game.RemainingEnergy <= 0 {
 				game.IsReadyToPlay = false
+			} else {
+				game.IsReadyToPlay = true
 			}
 		}
 
@@ -144,7 +147,15 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 		case "game_start":
 			if !game.IsReadyToPlay {
-				gr.sendError(game, "out of energy")
+				_, usedAt, err := gr.repo.GetEnergyStatus(context.TODO(), game.PlayerID)
+				if err != nil {
+					log.Printf("failed to get player energy: %s", err.Error())
+					return
+				}
+
+				nextAvailableEnergy := usedAt.UTC().Add(8 * time.Hour).Unix()
+				gr.sendError(game, "out of energy", nextAvailableEnergy)
+
 				continue
 			}
 
@@ -160,7 +171,15 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 		case "ball_hit":
 			if !game.IsReadyToPlay {
-				gr.sendError(game, "out of energy")
+				_, usedAt, err := gr.repo.GetEnergyStatus(context.TODO(), game.PlayerID)
+				if err != nil {
+					log.Printf("failed to get player energy: %s", err)
+					return
+				}
+
+				nextAvailableEnergy := usedAt.UTC().Add(8 * time.Hour).Unix()
+				gr.sendError(game, "out of energy", nextAvailableEnergy)
+
 				continue
 			}
 
@@ -174,13 +193,26 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 		case "ball_dropped":
 			if !game.IsReadyToPlay {
-				gr.sendError(game, "out of energy")
+				_, usedAt, err := gr.repo.GetEnergyStatus(context.TODO(), game.PlayerID)
+				if err != nil {
+					log.Println("failed to get player energy")
+					return
+				}
+
+				nextAvailableEnergy := usedAt.UTC().Add(8 * time.Hour).Unix()
+				gr.sendError(game, "out of energy", nextAvailableEnergy)
 				continue
 			}
 
 			if game.IsPlaying {
 				game.IsPlaying = false
 				gr.handleGameOver(game)
+			}
+
+		case "energy_recharge":
+			err := gr.repo.ResetEnergy(context.TODO(), game.PlayerID)
+			if err != nil {
+				log.Println("failed to reset energy", zap.Error(err))
 			}
 		}
 	}
@@ -236,11 +268,12 @@ func (gr *ballGameRoutes) sendGameState(game *Game) {
 	}
 }
 
-func (gr *ballGameRoutes) sendError(game *Game, message string) {
+func (gr *ballGameRoutes) sendError(game *Game, message string, nextAvailableEnergy int64) {
 	m := Message{
 		Type: "error",
 		Payload: map[string]any{
-			"message": message,
+			"message":                    message,
+			"next_available_energy_unix": nextAvailableEnergy,
 		},
 	}
 
