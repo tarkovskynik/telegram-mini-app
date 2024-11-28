@@ -243,7 +243,25 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 func (gr *ballGameRoutes) sendPlayerState(game *Game, isEnergyFull bool, charges []repository.EnergyCharge) {
 	l := logger.Logger()
-	fmt.Println(charges)
+
+	var ch []struct {
+		Number          int   `json:"energy_number"`
+		AvailableAtUnix int64 `json:"available_at_unix"`
+	}
+
+	for _, charge := range charges {
+		availableAtUnix := charge.UsedAt.UTC().Add(4 * time.Hour).Unix()
+
+		chh := struct {
+			Number          int   `json:"energy_number"`
+			AvailableAtUnix int64 `json:"available_at_unix"`
+		}{
+			Number:          charge.Number,
+			AvailableAtUnix: availableAtUnix,
+		}
+
+		ch = append(ch, chh)
+	}
 
 	state := Message{
 		Type: "player_state",
@@ -251,7 +269,7 @@ func (gr *ballGameRoutes) sendPlayerState(game *Game, isEnergyFull bool, charges
 			"total_energy":        game.TotalEnergy,
 			"remaining_energy":    game.RemainingEnergy,
 			"is_energy_full":      isEnergyFull,
-			"charges_on_cooldown": charges,
+			"charges_on_cooldown": ch,
 		},
 	}
 
@@ -271,6 +289,25 @@ func (gr *ballGameRoutes) sendPlayerState(game *Game, isEnergyFull bool, charges
 }
 
 func (gr *ballGameRoutes) sendGameState(game *Game, isEnergyFull bool, charges []repository.EnergyCharge) {
+	var ch []struct {
+		Number          int   `json:"energy_number"`
+		AvailableAtUnix int64 `json:"available_at_unix"`
+	}
+
+	for _, charge := range charges {
+		availableAtUnix := charge.UsedAt.UTC().Add(4 * time.Hour).Unix()
+
+		chh := struct {
+			Number          int   `json:"energy_number"`
+			AvailableAtUnix int64 `json:"available_at_unix"`
+		}{
+			Number:          charge.Number,
+			AvailableAtUnix: availableAtUnix,
+		}
+
+		ch = append(ch, chh)
+	}
+
 	state := Message{
 		Type: "game_state",
 		Payload: map[string]any{
@@ -281,7 +318,7 @@ func (gr *ballGameRoutes) sendGameState(game *Game, isEnergyFull bool, charges [
 			"remaining_energy":    game.RemainingEnergy,
 			"is_playing":          game.IsPlaying,
 			"is_energy_full":      isEnergyFull,
-			"charges_on_cooldown": charges,
+			"charges_on_cooldown": ch,
 		},
 	}
 
