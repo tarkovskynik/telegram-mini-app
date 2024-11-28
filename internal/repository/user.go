@@ -190,11 +190,11 @@ func (r *Repository) GetUserByTelegramID(ctx context.Context, telegramID int64) 
 		return nil, err
 	}
 
-	harvestedPoints, err := r.GetHarvestPoints(telegramID)
-	if err != nil {
-		return nil, err
-	}
-	user.Points += harvestedPoints
+	//harvestedPoints, err := r.GetHarvestPoints(telegramID)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//user.Points += harvestedPoints
 
 	return &model.User{
 		TelegramID:       user.TelegramID,

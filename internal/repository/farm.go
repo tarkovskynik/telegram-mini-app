@@ -4,137 +4,233 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/Masterminds/squirrel"
 )
 
 type FarmStatus struct {
-	CanHarvest       bool    `json:"canHarvest"`
-	TimeUntilHarvest float64 `json:"timeUntilHarvest"`
+	IsInProgress      bool
+	StartedAt         sql.NullTime
+	PointReward       int
+	IsPreviousClaimed bool
 }
 
 const CooldownDuration = 8 * time.Hour
+const DefaultReward = 1000
 
 func (r *Repository) StartHarvest(playerID int64) error {
-	r.Lock()
-	defer r.Unlock()
+	var status FarmStatus
+	selectQuery, selectArgs, err := squirrel.Select("is_in_progress", "started_at", "is_previous_claimed").
+		From("farm_game").
+		Where(squirrel.Eq{"player": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build select query: %w", err)
+	}
 
-	if _, exists := r.Cache[playerID]; exists {
-		return errors.New("harvest already in progress")
+	err = r.db.QueryRowContext(context.TODO(), selectQuery, selectArgs...).
+		Scan(&status.IsInProgress, &status.StartedAt, &status.IsPreviousClaimed)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			startTime := time.Now().UTC()
+			insertQuery, insertArgs, err := squirrel.Insert("farm_game").
+				Columns("player", "is_in_progress", "started_at", "is_previous_claimed").
+				Values(playerID, true, startTime, false).
+				PlaceholderFormat(squirrel.Dollar).
+				ToSql()
+			if err != nil {
+				return fmt.Errorf("failed to build insert query: %w", err)
+			}
+
+			_, err = r.db.ExecContext(context.TODO(), insertQuery, insertArgs...)
+			if err != nil {
+				return fmt.Errorf("failed to start harvest: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("failed to get farm status: %w", err)
+	}
+
+	if status.IsInProgress {
+		return fmt.Errorf("cannot start harvest: farming already in progress")
+	}
+
+	if !status.IsPreviousClaimed {
+		return fmt.Errorf("cannot start harvest: previous reward must be claimed first")
 	}
 
 	startTime := time.Now().UTC()
-	r.Cache[playerID] = startTime
-
-	_, err := r.db.Exec(`
-        UPDATE farm_game 
-        SET last_harvested_at = $1 
-        WHERE player = $2`,
-		startTime, playerID)
-	return err
-}
-
-func (r *Repository) GetHarvestPoints(telegramID int64) (int, error) {
-	r.Lock()
-	defer r.Unlock()
-
-	startTime, exists := r.Cache[telegramID]
-	if !exists {
-		return 0, nil
+	insertQuery, insertArgs, err := squirrel.Insert("farm_game").
+		Columns("player", "is_in_progress", "started_at", "is_previous_claimed").
+		Values(playerID, true, startTime, true).
+		Suffix("ON CONFLICT (player) DO UPDATE SET is_in_progress = EXCLUDED.is_in_progress, started_at = EXCLUDED.started_at").
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	elapsed := time.Now().UTC().Sub(startTime)
-	if elapsed >= CooldownDuration {
-		delete(r.Cache, telegramID)
-		err := r.UpdateUserPoints(context.TODO(), telegramID, 1000)
-		if err != nil {
-			return 0, err
-		}
-
-		return 1000, nil
+	_, err = r.db.ExecContext(context.TODO(), insertQuery, insertArgs...)
+	if err != nil {
+		return fmt.Errorf("failed to start harvest: %w", err)
 	}
 
-	return int(float64(1000) * float64(elapsed) / float64(8*time.Hour)), nil
+	return nil
 }
 
 func (r *Repository) Status(player int64) (FarmStatus, error) {
 	var status FarmStatus
-	var lastHarvestedAt sql.NullTime
 
-	err := r.db.QueryRow(`
-        SELECT last_harvested_at 
-        FROM farm_game 
-        WHERE player = $1`,
-		player,
-	).Scan(&lastHarvestedAt)
+	selectQuery, selectArgs, err := squirrel.Select(
+		"is_in_progress",
+		"started_at",
+		"is_previous_claimed",
+	).
+		From("farm_game").
+		Where(squirrel.Eq{"player": player}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return status, fmt.Errorf("failed to build select query: %w", err)
+	}
 
-	if err == sql.ErrNoRows {
-		return FarmStatus{CanHarvest: true, TimeUntilHarvest: 0}, nil
+	err = r.db.QueryRowContext(context.Background(), selectQuery, selectArgs...).
+		Scan(&status.IsInProgress, &status.StartedAt, &status.IsPreviousClaimed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return FarmStatus{
+			IsInProgress:      false,
+			StartedAt:         sql.NullTime{},
+			IsPreviousClaimed: true,
+			PointReward:       DefaultReward,
+		}, nil
 	}
 	if err != nil {
-		return status, err
+		return status, fmt.Errorf("failed to get farm status: %w", err)
 	}
 
-	if !lastHarvestedAt.Valid || time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()) >= CooldownDuration {
-		status.CanHarvest = true
-		status.TimeUntilHarvest = 0
-	} else {
-		status.CanHarvest = false
-		status.TimeUntilHarvest = CooldownDuration.Seconds() - time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()).Seconds()
+	if status.StartedAt.Valid && time.Now().UTC().Sub(status.StartedAt.Time.UTC()) >= CooldownDuration {
+		status.IsInProgress = false
+		status.StartedAt = sql.NullTime{}
+
+		updateQuery, updateArgs, err := squirrel.Update("farm_game").
+			Set("is_in_progress", false).
+			Set("started_at", nil).
+			Where(squirrel.Eq{"player": player}).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			return status, fmt.Errorf("failed to build update query: %w", err)
+		}
+
+		_, err = r.db.ExecContext(context.Background(), updateQuery, updateArgs...)
+		if err != nil {
+			return status, fmt.Errorf("failed to update expired status: %w", err)
+		}
 	}
+
+	status.PointReward = DefaultReward
 
 	return status, nil
 }
 
-//func (r *Repository) Harvest(player int64) error {
-//	tx, err := r.db.Begin()
-//	if err != nil {
-//		return err
+func (r *Repository) ClaimPoints(playerID int64) (int, error) {
+	var status FarmStatus
+	selectQuery, selectArgs, err := squirrel.Select(
+		"is_in_progress",
+		"started_at",
+		"is_previous_claimed",
+	).
+		From("farm_game").
+		Where(squirrel.Eq{"player": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	err = r.db.QueryRowContext(context.Background(), selectQuery, selectArgs...).
+		Scan(&status.IsInProgress, &status.StartedAt, &status.IsPreviousClaimed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("no farming session found")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to get farm status: %w", err)
+	}
+
+	timeSinceStart := time.Now().UTC().Sub(status.StartedAt.Time.UTC())
+	if timeSinceStart < CooldownDuration {
+		return 0, fmt.Errorf("farming session not yet complete, %v remaining", CooldownDuration-timeSinceStart)
+	}
+
+	if status.IsPreviousClaimed {
+		return 0, fmt.Errorf("reward already claimed")
+	}
+
+	updateQuery, updateArgs, err := squirrel.Update("farm_game").
+		Set("is_in_progress", false).
+		Set("is_previous_claimed", true).
+		Set("started_at", nil).
+		Where(squirrel.Eq{"player": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := r.db.ExecContext(context.Background(), updateQuery, updateArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update farm status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return 0, fmt.Errorf("no farm record found to update")
+	}
+
+	updatePointsQuery, updatePointsArgs, err := squirrel.Update("users").
+		Set("points", squirrel.Expr("points + ?", DefaultReward)).
+		Where(squirrel.Eq{"telegram_id": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("failed to build points update query: %w", err)
+	}
+
+	_, err = r.db.ExecContext(context.Background(), updatePointsQuery, updatePointsArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update user points: %w", err)
+	}
+
+	return DefaultReward, nil
+}
+
+//func (r *Repository) GetHarvestPoints(telegramID int64) (int, error) {
+//	r.Lock()
+//	defer r.Unlock()
+//
+//	startTime, exists := r.Cache[telegramID]
+//	if !exists {
+//		return 0, nil
 //	}
-//	defer tx.Rollback()
 //
-//	var lastHarvestedAt sql.NullTime
-//	err = tx.QueryRow(`
-//        SELECT last_harvested_at
-//        FROM farm_game
-//        WHERE player = $1
-//        FOR UPDATE`,
-//		player,
-//	).Scan(&lastHarvestedAt)
-//
-//	now := time.Now().UTC()
-//	if err == sql.ErrNoRows {
-//		_, err = tx.Exec(`
-//            INSERT INTO farm_game (player, last_harvested_at)
-//            VALUES ($1, $2)`,
-//			player, now,
-//		)
-//	} else if err != nil {
-//		return err
-//	} else {
-//		if lastHarvestedAt.Valid && time.Now().UTC().Sub(lastHarvestedAt.Time.UTC()) < CooldownDuration {
-//			return errors.New("cooldown period not finished")
+//	elapsed := time.Now().UTC().Sub(startTime)
+//	if elapsed >= CooldownDuration {
+//		delete(r.Cache, telegramID)
+//		err := r.UpdateUserPoints(context.TODO(), telegramID, 1000)
+//		if err != nil {
+//			return 0, err
 //		}
 //
-//		_, err = tx.Exec(`
-//            UPDATE farm_game
-//            SET last_harvested_at = $1
-//            WHERE player = $2`,
-//			now, player,
-//		)
-//	}
-//	if err != nil {
-//		return err
+//		return 1000, nil
 //	}
 //
-//	_, err = tx.Exec(`
-//        UPDATE users
-//        SET points = points + 1000
-//        WHERE telegram_id = $1`,
-//		player,
-//	)
-//	if err != nil {
-//		return err
-//	}
+//	time.Now().Add(8 * time.Hour).Sub(time.Now())
 //
-//	return tx.Commit()
+//	return int(float64(1000) * float64(elapsed) / float64(8*time.Hour)), nil
 //}

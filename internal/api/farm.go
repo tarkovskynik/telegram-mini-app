@@ -1,12 +1,13 @@
 package api
 
 import (
-	"context"
 	"net/http"
+	"strings"
 
 	"UD_telegram_miniapp/internal/repository"
 	"UD_telegram_miniapp/pkg/auth"
 	"UD_telegram_miniapp/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,18 +24,18 @@ func NewFarmGameRoutes(handler *gin.RouterGroup, repo *repository.Repository, a 
 
 	h.POST("/harvest", r.startHarvest)
 	h.GET("/status", r.status)
+	h.PATCH("/claim", r.claim)
 }
 
 type StatusResponse struct {
-	CanHarvest       bool    `json:"canHarvest"`
-	TimeUntilHarvest float64 `json:"timeUntilHarvest"`
-	Points           int     `json:"points"`
+	IsInProgress      bool  `json:"is_in_progress"`
+	StartedAtUnix     int64 `json:"started_at_unix"`
+	PointReward       int   `json:"point_reward"`
+	IsPreviousClaimed bool  `json:"is_previous_claimed"`
 }
 
 type HarvestResponse struct {
-	Success bool   `json:"success"`
-	Points  int    `json:"points"`
-	Error   string `json:"error,omitempty"`
+	Error string `json:"error"`
 }
 
 func (r *farmGameRoutes) startHarvest(c *gin.Context) {
@@ -57,14 +58,13 @@ func (r *farmGameRoutes) startHarvest(c *gin.Context) {
 	err := r.repo.StartHarvest(u.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   err.Error(),
+			"error": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"error": nil,
 	})
 
 }
@@ -92,24 +92,49 @@ func (r *farmGameRoutes) status(c *gin.Context) {
 		return
 	}
 
-	user, err := r.repo.GetUserByTelegramID(context.TODO(), u.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get points"})
-		return
-	}
-
-	_, exist := r.repo.Cache[u.ID]
-	if !exist {
-		c.JSON(http.StatusOK, StatusResponse{
-			CanHarvest:       status.CanHarvest,
-			TimeUntilHarvest: status.TimeUntilHarvest,
-		})
-		return
-	}
-
 	c.JSON(http.StatusOK, StatusResponse{
-		CanHarvest:       status.CanHarvest,
-		TimeUntilHarvest: status.TimeUntilHarvest,
-		Points:           user.Points,
+		IsInProgress:      status.IsInProgress,
+		StartedAtUnix:     status.StartedAt.Time.Unix(),
+		PointReward:       status.PointReward,
+		IsPreviousClaimed: status.IsPreviousClaimed,
+	})
+}
+
+func (r *farmGameRoutes) claim(c *gin.Context) {
+	log := logger.Logger()
+
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	u, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	points, err := r.repo.ClaimPoints(u.ID)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "no farming session found"):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No farming session found"})
+		case strings.Contains(err.Error(), "farming session not yet complete"):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case strings.Contains(err.Error(), "reward already claimed"):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Reward already claimed"})
+		default:
+			log.Error("failed to claim points", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to claim points"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"points_earned": points,
+		"message":       "Successfully claimed points",
 	})
 }

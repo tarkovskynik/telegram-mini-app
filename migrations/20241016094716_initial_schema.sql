@@ -129,9 +129,11 @@ CREATE TABLE energy_uses (
 
 -- farm game
 CREATE TABLE farm_game (
-                           player bigint PRIMARY KEY,
-                           last_harvested_at TIMESTAMP
-);
+                           player BIGINT PRIMARY KEY,
+                           is_in_progress bool,
+                           started_at TIMESTAMP,
+                           is_previous_claimed bool
+                       );
 -- +goose StatementEnd
 
 -- +goose Down
