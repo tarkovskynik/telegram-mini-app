@@ -459,7 +459,7 @@ func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total
 	err = r.db.GetContext(ctx, &total, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			const defaultTotalEnergy = 3
+			const defaultTotalEnergy = 10
 			const defaultCooldownSettingID = 1
 
 			insertQuery, insertArgs, err := squirrel.
@@ -616,4 +616,34 @@ func (r *Repository) ResetEnergy(ctx context.Context, userID int64) error {
 		zap.Int64("records_deleted", rows))
 
 	return nil
+}
+
+type EnergyCharge struct {
+	Number int       `db:"energy_number" json:"energy_number"`
+	UsedAt time.Time `db:"used_at" json:"used_at"`
+}
+
+func (r *Repository) GetEnergyChargesOnCooldown(ctx context.Context, playerID int64) ([]EnergyCharge, error) {
+	query, args, err := squirrel.
+		Select("eu.energy_number", "eu.used_at").
+		From("energy_uses eu").
+		Join("players p ON p.user_id = eu.user_id").
+		Join("cooldown_settings cs ON cs.id = p.cooldown_setting_id").
+		Where(squirrel.And{
+			squirrel.Eq{"eu.user_id": playerID},
+			squirrel.Expr("eu.used_at > NOW() - MAKE_INTERVAL(hours => cs.cooldown_hours)")}).
+		OrderBy("eu.used_at DESC").
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	var charges []EnergyCharge
+	err = r.db.SelectContext(ctx, &charges, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get energy charges: %w", err)
+	}
+
+	return charges, nil
 }

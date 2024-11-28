@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"UD_telegram_miniapp/internal/model"
+	"UD_telegram_miniapp/internal/repository"
 
 	"github.com/google/uuid"
 )
@@ -60,6 +61,7 @@ type UserRepository interface {
 	GetEnergyStatus(ctx context.Context, playerID int64) (energyNumb int, usedAt time.Time, err error)
 	UpdatePlayerEnergy(ctx context.Context, userID int64) error
 	ResetEnergy(ctx context.Context, userID int64) error
+	GetEnergyChargesOnCooldown(ctx context.Context, playerID int64) ([]repository.EnergyCharge, error)
 }
 
 type DailyQuestServiceI interface {

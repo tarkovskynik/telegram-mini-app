@@ -53,10 +53,10 @@ func main() {
 
 	appFirstStart := false
 	gameStarted := false
-	energyCount := 3
+	energyCount := 10
 	hitCount := 0
 	cyclesToResetEnergy := 1
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 
 	for range ticker.C {
 		if !appFirstStart {
@@ -65,7 +65,7 @@ func main() {
 
 		} else if !gameStarted {
 			if cyclesToResetEnergy <= 0 {
-				messageQueue <- Message{Type: "energy_recharge"}
+				//messageQueue <- Message{Type: "energy_recharge"}
 				cyclesToResetEnergy = 1
 				energyCount = 3
 				continue

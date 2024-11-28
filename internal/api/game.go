@@ -130,6 +130,17 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 			return
 		}
 
+		var isEnergyFull bool
+		var charges []repository.EnergyCharge
+		if remaining < total {
+			charges, err = gr.repo.GetEnergyChargesOnCooldown(context.TODO(), game.PlayerID)
+			if err != nil {
+				log.Println("failed to get charges on cooldown", zap.Error(err))
+			}
+		} else {
+			isEnergyFull = true
+		}
+
 		if !game.IsPlaying {
 			game.TotalEnergy = total
 			game.RemainingEnergy = remaining
@@ -143,7 +154,7 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 
 		switch message.Type {
 		case "player_state":
-			gr.sendPlayerState(game)
+			gr.sendPlayerState(game, isEnergyFull, charges)
 
 		case "game_start":
 			if !game.IsReadyToPlay {
@@ -166,7 +177,7 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 				game.CurrentHitScore = 0
 				bonusPointReward = 0
 				game.RemainingEnergy--
-				gr.sendGameState(game)
+				gr.sendGameState(game, isEnergyFull, charges)
 			}
 
 		case "ball_hit":
@@ -188,7 +199,7 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 				bonusPointReward++
 				game.TotalScore = game.TotalScore + game.CurrentHitScore
 				game.HitCounter++
-				gr.sendGameState(game)
+				gr.sendGameState(game, isEnergyFull, charges)
 			}
 
 		case "ball_dropped":
@@ -230,14 +241,17 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 	}
 }
 
-func (gr *ballGameRoutes) sendPlayerState(game *Game) {
+func (gr *ballGameRoutes) sendPlayerState(game *Game, isEnergyFull bool, charges []repository.EnergyCharge) {
 	l := logger.Logger()
+	fmt.Println(charges)
 
 	state := Message{
 		Type: "player_state",
 		Payload: map[string]any{
-			"total_energy":     game.TotalEnergy,
-			"remaining_energy": game.RemainingEnergy,
+			"total_energy":        game.TotalEnergy,
+			"remaining_energy":    game.RemainingEnergy,
+			"is_energy_full":      isEnergyFull,
+			"charges_on_cooldown": charges,
 		},
 	}
 
@@ -256,16 +270,18 @@ func (gr *ballGameRoutes) sendPlayerState(game *Game) {
 	}
 }
 
-func (gr *ballGameRoutes) sendGameState(game *Game) {
+func (gr *ballGameRoutes) sendGameState(game *Game, isEnergyFull bool, charges []repository.EnergyCharge) {
 	state := Message{
 		Type: "game_state",
 		Payload: map[string]any{
-			"total_score":       game.TotalScore,
-			"current_hit_score": game.CurrentHitScore,
-			"hit_counter":       game.HitCounter,
-			"total_energy":      game.TotalEnergy,
-			"remaining_energy":  game.RemainingEnergy,
-			"is_playing":        game.IsPlaying,
+			"total_score":         game.TotalScore,
+			"current_hit_score":   game.CurrentHitScore,
+			"hit_counter":         game.HitCounter,
+			"total_energy":        game.TotalEnergy,
+			"remaining_energy":    game.RemainingEnergy,
+			"is_playing":          game.IsPlaying,
+			"is_energy_full":      isEnergyFull,
+			"charges_on_cooldown": charges,
 		},
 	}
 

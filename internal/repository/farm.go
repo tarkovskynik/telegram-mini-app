@@ -18,7 +18,7 @@ type FarmStatus struct {
 }
 
 const CooldownDuration = 8 * time.Hour
-const DefaultReward = 1000
+const DefaultReward = 800
 
 func (r *Repository) StartHarvest(playerID int64) error {
 	var status FarmStatus
