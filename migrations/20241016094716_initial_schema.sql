@@ -121,7 +121,7 @@ CREATE TABLE players (
 CREATE TABLE energy_uses (
                              user_id BIGINT,
                              energy_number INTEGER,
-                             used_at TIMESTAMP,
+                             used_at TIMESTAMP WITH TIME ZONE,
                              PRIMARY KEY (user_id, energy_number),
                              FOREIGN KEY (user_id) REFERENCES players(user_id)
 );
