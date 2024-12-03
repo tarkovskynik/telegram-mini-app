@@ -15,6 +15,7 @@ import (
 	"UD_telegram_miniapp/internal/service"
 	"UD_telegram_miniapp/pkg/auth"
 	"UD_telegram_miniapp/pkg/logger"
+
 	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"

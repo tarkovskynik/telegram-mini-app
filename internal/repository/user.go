@@ -539,12 +539,14 @@ func (r *Repository) GetEnergyStatus(ctx context.Context, playerID int64) (energ
 
 func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error {
 	return r.Transaction(ctx, func(tx *sqlx.Tx) error {
+		now := time.Now().UTC()
+
 		query, args, err := squirrel.
 			Select("COUNT(*)").
 			From("energy_uses eu").
 			Where(squirrel.And{
 				squirrel.Eq{"eu.user_id": userID},
-				squirrel.Expr("eu.used_at > NOW() - make_interval(hours => cs.cooldown_hours)"),
+				squirrel.Expr("eu.used_at > ? - make_interval(hours => cs.cooldown_hours)", now),
 			}).
 			Join("players p ON p.user_id = eu.user_id").
 			Join("cooldown_settings cs ON cs.id = p.cooldown_setting_id").
@@ -563,8 +565,8 @@ func (r *Repository) UpdatePlayerEnergy(ctx context.Context, userID int64) error
 		insertQuery, insertArgs, err := squirrel.
 			Insert("energy_uses").
 			Columns("user_id", "energy_number", "used_at").
-			Values(userID, usedEnergy+1, squirrel.Expr("NOW()")).
-			Suffix(`ON CONFLICT (user_id, energy_number) DO UPDATE SET used_at = NOW()`).
+			Values(userID, usedEnergy+1, now).
+			Suffix(`ON CONFLICT (user_id, energy_number) DO UPDATE SET used_at = ?`, now).
 			PlaceholderFormat(squirrel.Dollar).
 			ToSql()
 		if err != nil {
