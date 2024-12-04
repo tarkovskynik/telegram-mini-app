@@ -2,29 +2,41 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"UD_telegram_miniapp/internal/repository"
+	"UD_telegram_miniapp/internal/service"
 	"UD_telegram_miniapp/pkg/auth"
 	"UD_telegram_miniapp/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type storeRoutes struct {
-	a *auth.TelegramAuth
+	a     *auth.TelegramAuth
+	store *service.PaymentService
+	user  *repository.Repository
 }
 
-func NewStoreRoutes(handler *gin.RouterGroup, a *auth.TelegramAuth) {
-	r := &storeRoutes{a: a}
+func NewStoreRoutes(handler *gin.RouterGroup, a *auth.TelegramAuth, store *service.PaymentService, user *repository.Repository) {
+	r := &storeRoutes{
+		a:     a,
+		store: store,
+		user:  user,
+	}
+
 	h := handler.Group("/store")
 	h.Use(a.TelegramAuthMiddleware())
 
 	h.POST("/energy-recharge", r.EnergyRechargeHandler)
-
+	h.GET("/ws", r.handleWebSocket)
 }
 
 func (r *storeRoutes) EnergyRechargeHandler(c *gin.Context) {
@@ -37,7 +49,7 @@ func (r *storeRoutes) EnergyRechargeHandler(c *gin.Context) {
 		return
 	}
 
-	user, ok := userData.(*auth.TelegramUserData)
+	_, ok := userData.(*auth.TelegramUserData)
 	if !ok {
 		log.Error("invalid type assertion for telegram user data")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
@@ -47,7 +59,7 @@ func (r *storeRoutes) EnergyRechargeHandler(c *gin.Context) {
 	request := CreateInvoiceLinkRequest{
 		Title:         "Energy Recharge",
 		Description:   "...",
-		Payload:       fmt.Sprintf("%d", user.ID),
+		Payload:       "ENERGY_RECHARGE",
 		ProviderToken: "",
 		Currency:      "XTR",
 		Prices: []LabeledPrice{
@@ -137,4 +149,61 @@ type CreateInvoiceLinkRequest struct {
 	NeedPhone     bool           `json:"need_phone_number,omitempty"`
 	NeedAddress   bool           `json:"need_shipping_address,omitempty"`
 	IsFlexible    bool           `json:"is_flexible,omitempty"`
+}
+
+func (r *storeRoutes) handleWebSocket(c *gin.Context) {
+	log := logger.Logger()
+
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	user, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Error("websocket upgrade failed", zap.Error(err))
+		return
+	}
+
+	paymentNotifications := &service.NotificationWS{
+		UserID:           user.ID,
+		NotificationChan: make(chan service.Message),
+	}
+
+	go r.store.StartPaymentListener(context.TODO(), paymentNotifications)
+	go r.PaymentNotificationsLoop(conn, paymentNotifications)
+}
+
+func (r *storeRoutes) PaymentNotificationsLoop(conn *websocket.Conn, paymentNotifications *service.NotificationWS) {
+	defer func() {
+		conn.Close()
+	}()
+
+	for message := range paymentNotifications.NotificationChan {
+		if message.Type == "ENERGY_RECHARGE_SUCCESS" {
+			err := r.user.ResetEnergy(context.TODO(), paymentNotifications.UserID)
+			if err != nil {
+				fmt.Printf("Error resetting energy recharge: %v\n", err)
+			}
+
+			out, err := json.MarshalIndent(message, "", "	")
+			if err != nil {
+				fmt.Println(fmt.Errorf("error marshaling response: %w", err))
+			}
+
+			err = conn.WriteMessage(websocket.TextMessage, out)
+			if err != nil {
+				fmt.Println(fmt.Errorf("error sending response: %w", err))
+			}
+		}
+	}
 }

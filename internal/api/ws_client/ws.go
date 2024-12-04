@@ -8,20 +8,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Message struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data,omitempty"`
-}
-
 func main() {
-	url := "ws://localhost:8888/api/v1/ws/5060715466"
-	//url := "wss://miniapp.ultimatedivision.com/api/v1/ws/5060715466"
+	//url := "ws://localhost:8888/api/v1/ws/5060715466"
+	url := "wss://miniapp.ultimatedivision.com/api/v1/ws/5060715466"
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
 	defer conn.Close()
+
+	type Message struct {
+		Type string      `json:"type"`
+		Data interface{} `json:"data,omitempty"`
+	}
 
 	messageQueue := make(chan Message)
 

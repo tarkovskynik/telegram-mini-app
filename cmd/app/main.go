@@ -74,7 +74,15 @@ func main() {
 	api.NewFarmGameRoutes(a, repo, telegramAuth)
 
 	//store
-	api.NewStoreRoutes(a, telegramAuth)
+	conf := service.PaymentConfig{
+		BotToken: cfg.TelegramAuth.TelegramBotToken,
+		Debug:    true,
+	}
+	store, err := service.NewPaymentService(conf)
+	if err != nil {
+		zapLogger.Fatal("Failed to initialize payment service", zap.Error(err))
+	}
+	api.NewStoreRoutes(a, telegramAuth, store, repo)
 
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	zapLogger.Info("Starting server", zap.String("addr", addr))
