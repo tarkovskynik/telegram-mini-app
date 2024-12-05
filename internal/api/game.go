@@ -58,10 +58,7 @@ var (
 	gamesMutex  sync.RWMutex
 )
 
-var (
-	basePointReward  = 10
-	bonusPointReward = 0
-)
+var bonusPointReward = 0
 
 func NewGameRoutes(handler *gin.RouterGroup, repo service.UserRepository, a *auth.TelegramAuth) {
 	r := &ballGameRoutes{repo: repo, a: a}
@@ -102,6 +99,14 @@ func (gr *ballGameRoutes) handleWebSocket(c *gin.Context) {
 	go gr.handleGameLoop(game)
 }
 
+type Player struct {
+	PlayerID          string `json:"player_id"`
+	TotalEnergy       int    `json:"total_energy"`
+	CooldownSettingID int    `json:"cooldown_setting_id"`
+	BallHitRewardID   int    `json:"ball_hit_reward_id"`
+	BallSkinID        int    `json:"ball_skin_id"`
+}
+
 func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 	defer func() {
 		game.conn.Close()
@@ -128,6 +133,12 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 		total, remaining, err := gr.repo.GetPlayerEnergy(context.TODO(), game.PlayerID)
 		if err != nil {
 			log.Println("failed to get player energy")
+			return
+		}
+
+		player, err := gr.repo.GetPlayer(context.TODO(), game.PlayerID)
+		if err != nil {
+			log.Println("failed to get player", zap.Error(err))
 			return
 		}
 
@@ -196,7 +207,7 @@ func (gr *ballGameRoutes) handleGameLoop(game *Game) {
 			}
 
 			if game.IsPlaying {
-				game.CurrentHitScore = basePointReward + bonusPointReward
+				game.CurrentHitScore = player.BallHitRewardPoints + bonusPointReward
 				bonusPointReward++
 				game.TotalScore = game.TotalScore + game.CurrentHitScore
 				game.HitCounter++

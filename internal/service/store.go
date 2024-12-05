@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -68,7 +69,20 @@ func (s *PaymentService) HandleSuccessfulPayment(ctx context.Context, msg *tgbot
 		return err
 	}
 
-	switch payment.InvoicePayload {
+	var payload = struct {
+		StoreItem  string `json:"store_item"`
+		ItemKindID int    `json:"item_kind_id"`
+	}{}
+
+	err = json.Unmarshal([]byte(payment.InvoicePayload), &payload)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("PAYLOAD")
+	fmt.Println(payload)
+
+	switch payload.StoreItem {
 	case "ENERGY_RECHARGE":
 		mess := Message{
 			Type: "ENERGY_RECHARGE_SUCCESS",
@@ -79,6 +93,28 @@ func (s *PaymentService) HandleSuccessfulPayment(ctx context.Context, msg *tgbot
 
 		paymentNotifications.NotificationChan <- mess
 
+	case "CUSTOM_BALL_HIT_REWARD":
+		mess := Message{
+			Type: "CUSTOM_BALL_HIT_REWARD_SUCCESS",
+			Payload: map[string]any{
+				"user_id": msg.From.ID,
+				"payload": payment.InvoicePayload,
+			},
+		}
+
+		paymentNotifications.NotificationChan <- mess
+		fmt.Printf("SUCCESSFUL_PAYMENT:\n%+v\n", payment)
+
+	case "CUSTOM_BALL_SKIN":
+		mess := Message{
+			Type: "CUSTOM_BALL_SKIN_SUCCESS",
+			Payload: map[string]any{
+				"user_id": msg.From.ID,
+				"payload": payment.InvoicePayload,
+			},
+		}
+
+		paymentNotifications.NotificationChan <- mess
 		fmt.Printf("SUCCESSFUL_PAYMENT:\n%+v\n", payment)
 	}
 

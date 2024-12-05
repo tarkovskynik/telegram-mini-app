@@ -461,11 +461,13 @@ func (r *Repository) GetPlayerEnergy(ctx context.Context, playerID int64) (total
 		if errors.Is(err, sql.ErrNoRows) {
 			const defaultTotalEnergy = 10
 			const defaultCooldownSettingID = 1
+			const defaultBallSkinID = 1
+			const defaultBallHitRewardID = 1
 
 			insertQuery, insertArgs, err := squirrel.
 				Insert("players").
-				Columns("user_id", "total_energy", "cooldown_setting_id").
-				Values(playerID, defaultTotalEnergy, defaultCooldownSettingID).
+				Columns("user_id", "total_energy", "cooldown_setting_id", "ball_hit_reward_id", "ball_skin_id").
+				Values(playerID, defaultTotalEnergy, defaultCooldownSettingID, defaultBallHitRewardID, defaultBallSkinID).
 				Suffix("RETURNING total_energy").
 				PlaceholderFormat(squirrel.Dollar).
 				ToSql()
@@ -646,4 +648,79 @@ func (r *Repository) GetEnergyChargesOnCooldown(ctx context.Context, playerID in
 	}
 
 	return charges, nil
+}
+
+type Player struct {
+	PlayerID            int64 `db:"user_id"`
+	TotalEnergy         int   `db:"total_energy"`
+	CooldownSettingID   int   `db:"cooldown_setting_id"`
+	BallHitRewardID     int   `db:"ball_hit_reward_id"`
+	BallHitRewardPoints int   `db:"points_per_hit"`
+	BallSkinID          int   `db:"ball_skin_id"`
+}
+
+func (r *Repository) GetPlayer(ctx context.Context, playerID int64) (*Player, error) {
+	query, args, err := squirrel.Select(
+		"p.user_id",
+		"p.total_energy",
+		"p.cooldown_setting_id",
+		"p.ball_hit_reward_id",
+		"p.ball_skin_id",
+		"bhr.points_per_hit").
+		From("players p").
+		LeftJoin("ball_hit_rewards bhr ON p.ball_hit_reward_id = bhr.id").
+		Where(squirrel.Eq{"p.user_id": playerID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	var player Player
+	err = r.db.GetContext(ctx, &player, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &player, nil
+}
+
+func (r *Repository) UpdatePlayerBallSkin(ctx context.Context, userID int64, ballSkinID int) error {
+	query, args, err := squirrel.
+		Update("players").
+		Set("ball_skin_id", ballSkinID).
+		Where(squirrel.Eq{"user_id": userID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		fmt.Println("TEMP1: ", err)
+		return err
+	}
+
+	_, err = r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		fmt.Println("TEMP2: ", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r *Repository) UpdatePlayerBallHitReward(ctx context.Context, userID int64, ballHitRewardID int) error {
+	query, args, err := squirrel.
+		Update("players").
+		Set("ball_hit_reward_id", ballHitRewardID).
+		Where(squirrel.Eq{"user_id": userID}).
+		PlaceholderFormat(squirrel.Dollar).
+		ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

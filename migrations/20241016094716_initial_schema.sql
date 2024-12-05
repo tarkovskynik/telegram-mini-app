@@ -112,11 +112,40 @@ CREATE TABLE cooldown_settings (
 );
 INSERT INTO cooldown_settings (id, cooldown_hours) VALUES (1, 8);
 
-CREATE TABLE players (
-                         user_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
-                         total_energy INTEGER NOT NULL,
-                         cooldown_setting_id INTEGER NOT NULL REFERENCES cooldown_settings(id)
+CREATE TABLE ball_skins (
+                            id INTEGER PRIMARY KEY,
+                            title VARCHAR NOT NULL
 );
+INSERT INTO ball_skins (id, title) VALUES   (1, 'skin_1'),
+                                            (2, 'skin_2'),
+                                            (3, 'skin_3');
+
+
+CREATE TABLE ball_hit_rewards (
+                                  id INTEGER PRIMARY KEY,
+                                  points_per_hit INTEGER NOT NULL
+);
+INSERT INTO ball_hit_rewards (id, points_per_hit) VALUES   (1, 0),
+                                                           (2, 10),
+                                                           (3, 20);
+
+CREATE TABLE players (
+                         user_id BIGINT PRIMARY KEY,
+                         total_energy INTEGER NOT NULL,
+                         cooldown_setting_id INTEGER NOT NULL,
+                         ball_hit_reward_id INTEGER,
+                         ball_skin_id INTEGER,
+                         FOREIGN KEY (user_id) REFERENCES users(telegram_id),
+                         FOREIGN KEY (cooldown_setting_id) REFERENCES cooldown_settings(id),
+                         FOREIGN KEY (ball_hit_reward_id) REFERENCES ball_hit_rewards(id),
+                         FOREIGN KEY (ball_skin_id) REFERENCES ball_skins(id)
+);
+
+
+
+CREATE INDEX idx_players_cooldown_setting ON players(cooldown_setting_id);
+CREATE INDEX idx_players_ball_hit_reward ON players(ball_hit_reward_id);
+CREATE INDEX idx_players_ball_skin ON players(ball_skin_id);
 
 CREATE TABLE energy_uses (
                              user_id BIGINT,

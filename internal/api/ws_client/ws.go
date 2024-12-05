@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	//url := "ws://localhost:8888/api/v1/ws/5060715466"
-	url := "wss://miniapp.ultimatedivision.com/api/v1/ws/5060715466"
+	url := "ws://localhost:8888/api/v1/ws/5060715466"
+	//url := "wss://miniapp.ultimatedivision.com/api/v1/ws/5060715466"
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {

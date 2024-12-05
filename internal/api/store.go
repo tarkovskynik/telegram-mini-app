@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"UD_telegram_miniapp/internal/repository"
@@ -36,6 +37,8 @@ func NewStoreRoutes(handler *gin.RouterGroup, a *auth.TelegramAuth, store *servi
 	h.Use(a.TelegramAuthMiddleware())
 
 	h.POST("/energy-recharge", r.EnergyRechargeHandler)
+	h.POST("/custom-ball-skin/:id", r.BallSKinHandler)
+	h.POST("/custom-ball-hit-reward/:id", r.RewardPerBallHitHandler)
 	h.GET("/ws", r.handleWebSocket)
 }
 
@@ -56,10 +59,156 @@ func (r *storeRoutes) EnergyRechargeHandler(c *gin.Context) {
 		return
 	}
 
+	payload := struct {
+		StoreItem  string `json:"store_item"`
+		ItemKindID int    `json:"item_kind_id"`
+	}{
+		StoreItem: "ENERGY_RECHARGE",
+	}
+
+	payloadJson, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
 	request := CreateInvoiceLinkRequest{
 		Title:         "Energy Recharge",
 		Description:   "...",
-		Payload:       "ENERGY_RECHARGE",
+		Payload:       string(payloadJson),
+		ProviderToken: "",
+		Currency:      "XTR",
+		Prices: []LabeledPrice{
+			{
+				Label:  "Product",
+				Amount: 1,
+			},
+		},
+	}
+
+	invoiceLink, err := createInvoiceLink(r.a.GetBotToken(), request)
+	if err != nil {
+		fmt.Printf("Error creating invoice link: %v\n", err)
+		return
+	}
+
+	out := struct {
+		Link string `json:"link"`
+	}{
+		invoiceLink,
+	}
+
+	c.JSON(http.StatusOK, out)
+
+	fmt.Printf("Invoice link created: %s\n", invoiceLink)
+}
+
+func (r *storeRoutes) BallSKinHandler(c *gin.Context) {
+	log := logger.Logger()
+
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	_, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	p := c.Param("id")
+	itemKindID, err := strconv.Atoi(p)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
+	payload := struct {
+		StoreItem  string `json:"store_item"`
+		ItemKindID int    `json:"item_kind_id"`
+	}{
+		StoreItem:  "CUSTOM_BALL_SKIN",
+		ItemKindID: itemKindID,
+	}
+
+	payloadJson, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
+	request := CreateInvoiceLinkRequest{
+		Title:         "Custom Ball Skin",
+		Description:   "...",
+		Payload:       string(payloadJson),
+		ProviderToken: "",
+		Currency:      "XTR",
+		Prices: []LabeledPrice{
+			{
+				Label:  "Product",
+				Amount: 1,
+			},
+		},
+	}
+
+	invoiceLink, err := createInvoiceLink(r.a.GetBotToken(), request)
+	if err != nil {
+		fmt.Printf("Error creating invoice link: %v\n", err)
+		return
+	}
+
+	out := struct {
+		Link string `json:"link"`
+	}{
+		invoiceLink,
+	}
+
+	c.JSON(http.StatusOK, out)
+
+	fmt.Printf("Invoice link created: %s\n", invoiceLink)
+}
+
+func (r *storeRoutes) RewardPerBallHitHandler(c *gin.Context) {
+	log := logger.Logger()
+
+	userData, exists := c.Get("telegram_user")
+	if !exists {
+		log.Error("telegram user data not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	_, ok := userData.(*auth.TelegramUserData)
+	if !ok {
+		log.Error("invalid type assertion for telegram user data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	p := c.Param("id")
+	itemKindID, err := strconv.Atoi(p)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
+	payload := struct {
+		StoreItem  string `json:"store_item"`
+		ItemKindID int    `json:"item_kind_id"`
+	}{
+		StoreItem:  "CUSTOM_BALL_HIT_REWARD",
+		ItemKindID: itemKindID,
+	}
+
+	payloadJson, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
+	request := CreateInvoiceLinkRequest{
+		Title:         "Custom Ball Hit Reward",
+		Description:   "...",
+		Payload:       string(payloadJson),
 		ProviderToken: "",
 		Currency:      "XTR",
 		Prices: []LabeledPrice{
@@ -189,10 +338,63 @@ func (r *storeRoutes) PaymentNotificationsLoop(conn *websocket.Conn, paymentNoti
 	}()
 
 	for message := range paymentNotifications.NotificationChan {
+		payloadJSON, ok := message.Payload["payload"].(string)
+		if !ok {
+			fmt.Println("error type assertion payload")
+		}
+
+		var payload struct {
+			StoreItem  string `json:"store_item"`
+			ItemKindID int    `json:"item_kind_id"`
+		}
+
+		err := json.Unmarshal([]byte(payloadJSON), &payload)
+		if err != nil {
+			fmt.Println("error unmarshaling payload")
+		}
+
 		if message.Type == "ENERGY_RECHARGE_SUCCESS" {
 			err := r.user.ResetEnergy(context.TODO(), paymentNotifications.UserID)
 			if err != nil {
 				fmt.Printf("Error resetting energy recharge: %v\n", err)
+			}
+
+			out, err := json.MarshalIndent(message, "", "	")
+			if err != nil {
+				fmt.Println(fmt.Errorf("error marshaling response: %w", err))
+			}
+
+			err = conn.WriteMessage(websocket.TextMessage, out)
+			if err != nil {
+				fmt.Println(fmt.Errorf("error sending response: %w", err))
+			}
+		}
+
+		if message.Type == "CUSTOM_BALL_SKIN_SUCCESS" {
+			ballSkinID := payload.ItemKindID
+
+			err := r.user.UpdatePlayerBallSkin(context.TODO(), paymentNotifications.UserID, ballSkinID)
+			if err != nil {
+				fmt.Printf("Error updating ball skin: %v\n", err)
+			}
+
+			out, err := json.MarshalIndent(message, "", "	")
+			if err != nil {
+				fmt.Println(fmt.Errorf("error marshaling response: %w", err))
+			}
+
+			err = conn.WriteMessage(websocket.TextMessage, out)
+			if err != nil {
+				fmt.Println(fmt.Errorf("error sending response: %w", err))
+			}
+		}
+
+		if message.Type == "CUSTOM_BALL_HIT_REWARD_SUCCESS" {
+			ballHitRewardID := payload.ItemKindID
+
+			err := r.user.UpdatePlayerBallHitReward(context.TODO(), paymentNotifications.UserID, ballHitRewardID)
+			if err != nil {
+				fmt.Printf("Error updating ball hit reward: %v\n", err)
 			}
 
 			out, err := json.MarshalIndent(message, "", "	")

@@ -58,10 +58,13 @@ type UserRepository interface {
 	GetUserReferrals(ctx context.Context, telegramID int64) ([]*model.UserReferral, error)
 	//game
 	GetPlayerEnergy(ctx context.Context, playerID int64) (total int, remaining int, err error)
+	GetPlayer(ctx context.Context, playerID int64) (*repository.Player, error)
 	GetEnergyStatus(ctx context.Context, playerID int64) (energyNumb int, usedAt time.Time, err error)
 	UpdatePlayerEnergy(ctx context.Context, userID int64) error
 	ResetEnergy(ctx context.Context, userID int64) error
 	GetEnergyChargesOnCooldown(ctx context.Context, playerID int64) ([]repository.EnergyCharge, error)
+	UpdatePlayerBallSkin(ctx context.Context, userID int64, ballSkinID int) error
+	UpdatePlayerBallHitReward(ctx context.Context, userID int64, ballHitRewardID int) error
 }
 
 type DailyQuestServiceI interface {
