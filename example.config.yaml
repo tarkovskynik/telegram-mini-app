@@ -1,30 +1,16 @@
-database:
-  host: localhost
-  port: 5555
-  user: postgres
-  password: 12345
-  name: ud_telegram_miniapp_test
-
 server:
-  host: 127.0.0.1
-  port: 8888
-  debugMode: true
+  host:
+  port:
+  debugMode:
+
+database:
+  host:
+  port:
+  user:
+  password:
+  name:
 
 telegramAuth:
-  telegramBotToken: your_telegram_bot_token
+  telegramBotToken:
 
-logLevel: info
-
-#database:
-#  host: ud-telegram-mini-app-db.cve8ue6cyite.eu-north-1.rds.amazonaws.com
-#  port: 5432
-#  user: postgres
-#  password: miniappdbpass
-#  name: ud_telegram_mini_app_db
-
-#database:
-#  host: localhost
-#  port: 8888
-#  user: miniapp
-#  password: 12345
-#  name: ud_telegram_mini_app_db
+logLevel:

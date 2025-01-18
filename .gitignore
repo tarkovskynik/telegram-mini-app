@@ -42,6 +42,11 @@ Thumbs.db
 config.yaml
 !example.config.yaml
 
+docker-compose.yml
+!docker-compose.example.yml
+
+/nginx
+
 # Temporary files
 *.tmp
 *.bak
