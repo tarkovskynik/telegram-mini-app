@@ -1,8 +1,3 @@
-
-
-DB_URL=postgresql://postgres:12345@127.0.0.1:5555/ud_telegram_miniapp_test?sslmode=disable
-MIGRATIONS_DIR=./migrations
-
 migrate-create:
 	goose -dir=$(MIGRATIONS_DIR) create $(name) sql
 

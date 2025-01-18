@@ -16,22 +16,22 @@ const (
 )
 
 type Config struct {
-	Database repository.Config `yaml:"database"`
-	Server   ServerConfig      `yaml:"server"`
+	Database repository.Config `mapstructure:"database"`
+	Server   ServerConfig      `mapstructure:"server"`
 
-	TelegramAuth TelegramAuthConfig `yaml:"telegramAuth"`
+	TelegramAuth TelegramAuthConfig `mapstructure:"telegramAuth"`
 
-	LogLevel string `yaml:"logLevel"`
+	LogLevel string `mapstructure:"logLevel"`
 }
 
 type ServerConfig struct {
-	Host      string `yaml:"host"`
-	Port      string `yaml:"port"`
-	DebugMode bool   `yaml:"debugMode"`
+	Host      string `mapstructure:"host"`
+	Port      string `mapstructure:"port"`
+	DebugMode bool   `mapstructure:"debugMode"`
 }
 
 type TelegramAuthConfig struct {
-	TelegramBotToken string `yaml:"telegramBotToken"`
+	TelegramBotToken string `mapstructure:"telegramBotToken"`
 }
 
 func LoadConfig() (*Config, error) {

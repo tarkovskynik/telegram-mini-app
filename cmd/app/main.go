@@ -12,9 +12,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Printf("failed to read .env: %v\n", err)
+	}
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
